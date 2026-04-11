@@ -4,8 +4,10 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
+    "start:lan": "expo start --lan",
+    "start:localhost": "expo start --localhost",
     "android": "expo start --android",
-    "ios": "expo start --ios",
+    "ios": "expo start --ios --localhost",
     "web": "expo start --web",
     "postinstall": "patch-package",
     "expo:login": "expo login"
