@@ -6,17 +6,26 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "postinstall": "patch-package",
+    "expo:login": "expo login"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "^9.1.0",
     "expo": "~54.0.33",
+    "expo-sqlite": "^55.0.15",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5"
   },
   "devDependencies": {
+    "@expo/cli": "54.0.23",
     "@types/react": "~19.1.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "@expo/cli": "54.0.23"
   },
   "private": true
 }
