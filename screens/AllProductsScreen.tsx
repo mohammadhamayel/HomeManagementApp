@@ -19,6 +19,7 @@ import {
   getProductLinesByGroupId,
   parseQuantityInput,
   pickDisplayLine,
+  bumpProductLineQuantity,
   type Product,
   type ProductLineRecord,
 } from "../database";
@@ -101,6 +102,15 @@ export default function AllProductsScreen() {
     void (async () => {
       await updateProductQuantity(editProduct.id, q);
       closeEditQuantity();
+      load();
+    })();
+  };
+
+  const bumpLineQuantity = (line: ProductLineRecord, delta: number) => {
+    void (async () => {
+      await bumpProductLineQuantity(line.id, delta);
+      const lines = await getProductLinesByGroupId(line.groupId);
+      setHistoryLines(lines.sort((a, b) => a.id - b.id));
       load();
     })();
   };
@@ -313,13 +323,37 @@ export default function AllProductsScreen() {
                   const isDisplayed = line.id === displayLine.id;
                   return (
                   <View key={line.id} style={styles.historySubCard}>
-                    <Text style={[styles.historySubTitle, rtlLabel]}>
-                      دفعة {idx + 1} — كمية:{" "}
-                      <Text style={styles.historyQty}>{line.quantity}</Text>
-                      {isDisplayed ? (
-                        <Text style={styles.historyBadge}> — على البطاقة</Text>
-                      ) : null}
-                    </Text>
+                    <View style={styles.historySubTitleRow}>
+                      <View style={styles.historyQtyStepper}>
+                        <TouchableOpacity
+                          style={[
+                            styles.historyStepBtn,
+                            line.quantity <= 0
+                              ? styles.historyStepBtnDisabled
+                              : undefined,
+                          ]}
+                          onPress={() => bumpLineQuantity(line, -1)}
+                          disabled={line.quantity <= 0}
+                          accessibilityLabel="نقصان كمية الدفعة"
+                        >
+                          <Text style={styles.historyStepBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.historyStepBtn}
+                          onPress={() => bumpLineQuantity(line, 1)}
+                          accessibilityLabel="زيادة كمية الدفعة"
+                        >
+                          <Text style={styles.historyStepBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={[styles.historySubTitle, rtlLabel, styles.historySubTitleFlex]}>
+                        دفعة {idx + 1} — كمية:{" "}
+                        <Text style={styles.historyQty}>{line.quantity}</Text>
+                        {isDisplayed ? (
+                          <Text style={styles.historyBadge}> — على البطاقة</Text>
+                        ) : null}
+                      </Text>
+                    </View>
                     <Text style={[styles.historyMeta, rtlLabel]}>
                       تاريخ الإضافة:{" "}
                       {new Date(line.purchaseDate).toLocaleDateString("ar")}
@@ -547,11 +581,39 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: "#f8fafc",
   },
+  historySubTitleRow: {
+    flexDirection: "row",
+    direction: "ltr",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  historySubTitleFlex: { flex: 1 },
+  historyQtyStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  historyStepBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  historyStepBtnDisabled: {
+    opacity: 0.35,
+  },
+  historyStepBtnText: {
+    fontSize: 22,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
   historySubTitle: {
     fontSize: 15,
     fontWeight: "700",
     color: "#0f172a",
-    marginBottom: 6,
   },
   historyQty: { fontWeight: "800" },
   historyBadge: {

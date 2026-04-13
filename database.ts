@@ -398,6 +398,28 @@ export async function updateProductLine(
   );
 }
 
+/** Changes one batch line quantity by `delta` (e.g. +1 / −1), floored at zero. */
+export async function bumpProductLineQuantity(
+  lineId: number,
+  delta: number
+): Promise<void> {
+  if (delta === 0) return;
+  await initDB();
+  const db = await ensureDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    "SELECT id, group_id, quantity, purchaseDate, expiryDate, category, notes, expiry_alert_days, low_qty_threshold FROM product_lines WHERE id = ?",
+    [lineId]
+  );
+  if (!row) return;
+  const line = normalizeLineRow(row);
+  const next = Math.max(0, line.quantity + delta);
+  if (next === line.quantity) return;
+  await db.runAsync("UPDATE product_lines SET quantity = ? WHERE id = ?", [
+    next,
+    lineId,
+  ]);
+}
+
 export async function updateGroupName(groupId: number, name: string): Promise<void> {
   await initDB();
   const db = await ensureDb();
