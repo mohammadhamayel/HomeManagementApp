@@ -17,9 +17,11 @@ import {
   NotificationProvider,
   useInventoryNotifications,
 } from "../context/NotificationContext";
+import { OrderListProvider } from "../context/OrderListContext";
 import LoginScreen from "../screens/LoginScreen";
 import LastProductScreen from "../screens/LastProductScreen";
 import AllProductsScreen from "../screens/AllProductsScreen";
+import OrderReceiptScreen from "../screens/OrderReceiptScreen";
 import ManageUsersScreen from "../screens/ManageUsersScreen";
 
 const Drawer = createDrawerNavigator();
@@ -99,6 +101,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
       <Item name="LastProduct" icon="🏷️" label="منيج جديد" />
       <Item name="AllProducts" icon="📋" label="جميع المنتجات" />
+      <Item name="OrderReceipt" icon="⭐" label="الطلبية-الرشيتة" />
       {user?.isAdmin ? (
         <Item name="ManageUsers" icon="👥" label="المستخدمون" />
       ) : null}
@@ -141,7 +144,16 @@ function MainDrawer() {
         component={LastProductScreen}
         options={{ title: "منيج جديد" }}
       />
-      <Drawer.Screen name="AllProducts" component={AllProductsScreen} />
+      <Drawer.Screen
+        name="AllProducts"
+        component={AllProductsScreen}
+        options={{ title: "جميع المنتجات" }}
+      />
+      <Drawer.Screen
+        name="OrderReceipt"
+        component={OrderReceiptScreen}
+        options={{ title: "الطلبية-الرشيتة" }}
+      />
       <Drawer.Screen name="ManageUsers" component={ManageUsersScreen} />
     </Drawer.Navigator>
   );
@@ -162,7 +174,9 @@ export default function AppNavigator() {
     <NavigationContainer>
       {user ? (
         <NotificationProvider>
-          <MainDrawer />
+          <OrderListProvider>
+            <MainDrawer />
+          </OrderListProvider>
         </NotificationProvider>
       ) : (
         <LoginScreen />

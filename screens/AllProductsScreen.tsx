@@ -24,11 +24,13 @@ import {
   type ProductLineRecord,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
+import { useOrderList } from "../context/OrderListContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
 
 export default function AllProductsScreen() {
   const { refreshNotifications } = useInventoryNotifications();
+  const { isStarred, getEntry, upsertEntry, removeEntry } = useOrderList();
   const [products, setProducts] = useState<Product[]>([]);
   const [nameFilter, setNameFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -42,6 +44,10 @@ export default function AllProductsScreen() {
   const [historyGroupName, setHistoryGroupName] = useState("");
   const [historyLines, setHistoryLines] = useState<ProductLineRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [starModalVisible, setStarModalVisible] = useState(false);
+  const [starProduct, setStarProduct] = useState<Product | null>(null);
+  const [starQtyDraft, setStarQtyDraft] = useState("1");
+  const [starNotesDraft, setStarNotesDraft] = useState("");
 
   const load = useCallback(() => {
     void (async () => {
@@ -85,6 +91,48 @@ export default function AllProductsScreen() {
     setEditModalVisible(false);
     setEditProduct(null);
     setEditQtyDraft("");
+  };
+
+  const closeStarModal = () => {
+    setStarModalVisible(false);
+    setStarProduct(null);
+    setStarQtyDraft("1");
+    setStarNotesDraft("");
+  };
+
+  const openStarModal = (item: Product) => {
+    setStarProduct(item);
+    const existing = getEntry(item.id);
+    setStarQtyDraft(String(existing?.quantity ?? 1));
+    setStarNotesDraft(existing?.notes ?? "");
+    setStarModalVisible(true);
+  };
+
+  const bumpStarQty = (delta: number) => {
+    const n = parseQuantityInput(starQtyDraft) ?? 0;
+    setStarQtyDraft(String(Math.max(0, n + delta)));
+  };
+
+  const saveStarToOrder = () => {
+    if (!starProduct) return;
+    const q = parseQuantityInput(starQtyDraft);
+    if (q === null || q <= 0) {
+      Alert.alert("تنبيه", "أدخل كمية أكبر من صفر");
+      return;
+    }
+    upsertEntry({
+      productId: starProduct.id,
+      productName: starProduct.name,
+      quantity: q,
+      notes: starNotesDraft,
+    });
+    closeStarModal();
+  };
+
+  const removeStarFromOrder = () => {
+    if (!starProduct) return;
+    removeEntry(starProduct.id);
+    closeStarModal();
   };
 
   const bumpEditQty = (delta: number) => {
@@ -238,6 +286,18 @@ export default function AllProductsScreen() {
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.starBtn}
+              onPress={() => openStarModal(item)}
+              accessibilityLabel={
+                isStarred(item.id) ? "تعديل الطلبية" : "إضافة للطلبية"
+              }
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            >
+              <Text style={styles.starIcon}>
+                {isStarred(item.id) ? "★" : "☆"}
+              </Text>
+            </TouchableOpacity>
             <View style={styles.cardTop}>
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -393,6 +453,87 @@ export default function AllProductsScreen() {
       </Modal>
 
       <Modal
+        visible={starModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeStarModal}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeStarModal}>
+          <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
+            <TouchableOpacity
+              style={styles.starModalCloseX}
+              onPress={closeStarModal}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="إغلاق"
+            >
+              <Text style={styles.starModalCloseXText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, rtlLabel]}>الطلبية — الرشيتة</Text>
+            {starProduct ? (
+              <Text style={[styles.modalSubtitle, rtlLabel]}>
+                {starProduct.name}
+              </Text>
+            ) : null}
+
+            <View style={styles.stepperRow}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => bumpStarQty(-1)}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={[styles.modalQtyInput, rtlInput]}
+                placeholder="الكمية"
+                placeholderTextColor="#94a3b8"
+                keyboardType="number-pad"
+                value={starQtyDraft}
+                onChangeText={(t) =>
+                  setStarQtyDraft(sanitizeUnsignedIntegerInput(t))
+                }
+                selectTextOnFocus
+              />
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => bumpStarQty(1)}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.starNotesLabel, rtlLabel]}>ملاحظات</Text>
+            <TextInput
+              style={[styles.starNotesInput, rtlInput]}
+              placeholder="ملاحظات (اختياري)"
+              placeholderTextColor="#94a3b8"
+              value={starNotesDraft}
+              onChangeText={setStarNotesDraft}
+              multiline
+            />
+
+            <View style={styles.starModalActions}>
+              {starProduct && isStarred(starProduct.id) ? (
+                <TouchableOpacity
+                  style={styles.starRemoveBtn}
+                  onPress={removeStarFromOrder}
+                >
+                  <Text style={styles.starRemoveBtnText}>إزالة من الطلبية</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={styles.modalBtnPrimary}
+                onPress={saveStarToOrder}
+              >
+                <Text style={styles.modalBtnPrimaryText}>
+                  {starProduct && isStarred(starProduct.id) ? "حفظ" : "إضافة"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={editModalVisible}
         transparent
         animationType="fade"
@@ -497,13 +638,29 @@ const styles = StyleSheet.create({
   emptyList: { flexGrow: 1, justifyContent: "center" },
   empty: { textAlign: "center", color: "#64748b", fontSize: 16, padding: 24 },
   card: {
+    position: "relative",
     borderWidth: 1,
     borderColor: "#e2e8f0",
     padding: 14,
+    paddingLeft: 52,
     marginHorizontal: 16,
     marginVertical: 6,
     borderRadius: 12,
     backgroundColor: "#fafafa",
+  },
+  starBtn: {
+    position: "absolute",
+    left: 8,
+    top: 10,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  starIcon: {
+    fontSize: 26,
+    color: "#ca8a04",
   },
   cardTop: {
     flexDirection: "row",
@@ -688,5 +845,53 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  starModalCloseX: {
+    position: "absolute",
+    top: 10,
+    left: 12,
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  starModalCloseXText: { fontSize: 20, color: "#64748b", fontWeight: "700" },
+  starNotesLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#334155",
+    marginTop: 16,
+    marginBottom: 6,
+    textAlign: "right",
+    alignSelf: "stretch",
+  },
+  starNotesInput: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    textAlignVertical: "top",
+  },
+  starModalActions: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 18,
+  },
+  starRemoveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "#fee2e2",
+  },
+  starRemoveBtnText: {
+    color: "#b91c1c",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
