@@ -11,19 +11,7 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
-
-const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-const LATIN_DIGITS = "0123456789";
-
-function toLatinDigits(s: string): string {
-  return s
-    .split("")
-    .map((c) => {
-      const i = AR_DIGITS.indexOf(c);
-      return i >= 0 ? LATIN_DIGITS[i] : c;
-    })
-    .join("");
-}
+import { toLatinDigits } from "../utils/digitLocale";
 
 export function formatDateForDisplay(d: Date): string {
   const day = d.getDate().toString().padStart(2, "0");

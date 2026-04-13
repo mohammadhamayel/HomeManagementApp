@@ -20,6 +20,7 @@ import {
   type Product,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
+import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
 
 export default function LastProductScreen() {
   const { refreshNotifications } = useInventoryNotifications();
@@ -172,7 +173,7 @@ export default function LastProductScreen() {
         style={[styles.input, rtlInput]}
         keyboardType="number-pad"
         value={quantity}
-        onChangeText={(t) => setQuantity(t.replace(/[^0-9]/g, ""))}
+        onChangeText={(t) => setQuantity(sanitizeUnsignedIntegerInput(t))}
       />
 
       <TextInput
@@ -181,7 +182,7 @@ export default function LastProductScreen() {
         style={[styles.input, rtlInput]}
         keyboardType="number-pad"
         value={expiryAlertDays}
-        onChangeText={(t) => setExpiryAlertDays(t.replace(/[^0-9]/g, ""))}
+        onChangeText={(t) => setExpiryAlertDays(sanitizeUnsignedIntegerInput(t))}
       />
 
       <TextInput
@@ -190,7 +191,7 @@ export default function LastProductScreen() {
         style={[styles.input, rtlInput]}
         keyboardType="number-pad"
         value={lowQtyThreshold}
-        onChangeText={(t) => setLowQtyThreshold(t.replace(/[^0-9]/g, ""))}
+        onChangeText={(t) => setLowQtyThreshold(sanitizeUnsignedIntegerInput(t))}
       />
 
       <TextInput

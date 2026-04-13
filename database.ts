@@ -1,5 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
+import { toLatinDigits } from "./utils/digitLocale";
 
 /** Async DB open — sync SQLite APIs + New Architecture often cause HostFunction / runtime-not-ready crashes. */
 let dbPromise: Promise<SQLiteDatabase> | null = null;
@@ -41,7 +42,7 @@ export type DbUser = {
 };
 
 export function parseQuantityInput(text: string): number | null {
-  const trimmed = text.trim();
+  const trimmed = toLatinDigits(text.trim());
   if (trimmed === "") return null;
   const n = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(n) || n < 0) return null;

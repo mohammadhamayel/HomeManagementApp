@@ -20,6 +20,7 @@ import {
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
+import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
 
 export default function AllProductsScreen() {
   const { refreshNotifications } = useInventoryNotifications();
@@ -270,7 +271,7 @@ export default function AllProductsScreen() {
                 keyboardType="number-pad"
                 value={editQtyDraft}
                 onChangeText={(t) =>
-                  setEditQtyDraft(t.replace(/[^0-9]/g, ""))
+                  setEditQtyDraft(sanitizeUnsignedIntegerInput(t))
                 }
                 selectTextOnFocus
               />
