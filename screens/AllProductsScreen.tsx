@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   FlatList,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   Modal,
@@ -15,8 +16,11 @@ import {
   getAllProducts,
   deleteProduct,
   updateProductQuantity,
+  getProductLinesByGroupId,
   parseQuantityInput,
+  pickDisplayLine,
   type Product,
+  type ProductLineRecord,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
@@ -33,6 +37,10 @@ export default function AllProductsScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [editQtyDraft, setEditQtyDraft] = useState("");
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyGroupName, setHistoryGroupName] = useState("");
+  const [historyLines, setHistoryLines] = useState<ProductLineRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = useCallback(() => {
     void (async () => {
@@ -51,6 +59,25 @@ export default function AllProductsScreen() {
     setEditProduct(item);
     setEditQtyDraft(String(item.quantity));
     setEditModalVisible(true);
+  };
+
+  const openHistory = (item: Product) => {
+    setHistoryGroupName(item.name);
+    setHistoryVisible(true);
+    setHistoryLines([]);
+    setHistoryLoading(true);
+    void (async () => {
+      const lines = await getProductLinesByGroupId(item.id);
+      setHistoryLines(lines.sort((a, b) => a.id - b.id));
+      setHistoryLoading(false);
+    })();
+  };
+
+  const closeHistory = () => {
+    setHistoryVisible(false);
+    setHistoryGroupName("");
+    setHistoryLines([]);
+    setHistoryLoading(false);
   };
 
   const closeEditQuantity = () => {
@@ -205,6 +232,13 @@ export default function AllProductsScreen() {
               <View style={styles.actions}>
                 <TouchableOpacity
                   style={styles.iconBtn}
+                  onPress={() => openHistory(item)}
+                  accessibilityLabel="تفاصيل السجلات"
+                >
+                  <Text style={styles.icon}>📋</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.iconBtn}
                   onPress={() => openEditQuantity(item)}
                   accessibilityLabel="تعديل الكمية"
                 >
@@ -221,18 +255,30 @@ export default function AllProductsScreen() {
               <View style={styles.details}>
                 <Text style={[styles.name, rtlLabel]}>{item.name}</Text>
                 <Text style={[styles.quantityLine, rtlLabel]}>
-                  الكمية: <Text style={styles.quantityValue}>{item.quantity}</Text>
+                  الكمية الإجمالية:{" "}
+                  <Text style={styles.quantityValue}>{item.quantity}</Text>
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
                   التصنيف: {item.category}
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
-                  تاريخ الإضافة:{" "}
+                  تاريخ الإضافة (الدفعة الظاهرة):{" "}
                   {new Date(item.purchaseDate).toLocaleDateString("ar")}
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
-                  انتهاء: {new Date(item.expiryDate).toLocaleDateString("ar")}
+                  انتهاء (الدفعة الظاهرة):{" "}
+                  {new Date(item.expiryDate).toLocaleDateString("ar")}
                 </Text>
+                {item.expiryAlertDays > 0 ? (
+                  <Text style={[styles.meta, rtlLabel]}>
+                    تنبيه انتهاء: خلال {item.expiryAlertDays} يومًا أو أقل
+                  </Text>
+                ) : null}
+                {item.lowQtyThreshold > 0 ? (
+                  <Text style={[styles.meta, rtlLabel]}>
+                    تنبيه كمية عند: {item.lowQtyThreshold} أو أقل
+                  </Text>
+                ) : null}
                 {item.notes ? (
                   <Text style={[styles.meta, rtlLabel]}>ملاحظات: {item.notes}</Text>
                 ) : null}
@@ -243,6 +289,76 @@ export default function AllProductsScreen() {
       />
 
       <Modal
+        visible={historyVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeHistory}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeHistory}>
+          <Pressable style={styles.historyModalBox} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, rtlLabel]}>سجل الدفعات</Text>
+            <Text style={[styles.historySubtitle, rtlLabel]}>{historyGroupName}</Text>
+            <ScrollView
+              style={styles.historyScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              {historyLoading ? (
+                <Text style={[styles.historyEmpty, rtlLabel]}>جاري التحميل…</Text>
+              ) : historyLines.length === 0 ? (
+                <Text style={[styles.historyEmpty, rtlLabel]}>لا توجد دفعات</Text>
+              ) : (
+                (() => {
+                  const displayLine = pickDisplayLine(historyLines);
+                  return historyLines.map((line, idx) => {
+                  const isDisplayed = line.id === displayLine.id;
+                  return (
+                  <View key={line.id} style={styles.historySubCard}>
+                    <Text style={[styles.historySubTitle, rtlLabel]}>
+                      دفعة {idx + 1} — كمية:{" "}
+                      <Text style={styles.historyQty}>{line.quantity}</Text>
+                      {isDisplayed ? (
+                        <Text style={styles.historyBadge}> — على البطاقة</Text>
+                      ) : null}
+                    </Text>
+                    <Text style={[styles.historyMeta, rtlLabel]}>
+                      تاريخ الإضافة:{" "}
+                      {new Date(line.purchaseDate).toLocaleDateString("ar")}
+                    </Text>
+                    <Text style={[styles.historyMeta, rtlLabel]}>
+                      انتهاء: {new Date(line.expiryDate).toLocaleDateString("ar")}
+                    </Text>
+                    <Text style={[styles.historyMeta, rtlLabel]}>
+                      التصنيف: {line.category}
+                    </Text>
+                    {line.expiryAlertDays > 0 ? (
+                      <Text style={[styles.historyMeta, rtlLabel]}>
+                        تنبيه انتهاء: خلال {line.expiryAlertDays} يومًا أو أقل
+                      </Text>
+                    ) : null}
+                    {line.lowQtyThreshold > 0 ? (
+                      <Text style={[styles.historyMeta, rtlLabel]}>
+                        تنبيه كمية عند: {line.lowQtyThreshold} أو أقل
+                      </Text>
+                    ) : null}
+                    {line.notes ? (
+                      <Text style={[styles.historyMeta, rtlLabel]}>
+                        ملاحظات: {line.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                  );
+                });
+                })()
+              )}
+            </ScrollView>
+            <TouchableOpacity style={styles.historyCloseBtn} onPress={closeHistory}>
+              <Text style={styles.modalBtnPrimaryText}>إغلاق</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={editModalVisible}
         transparent
         animationType="fade"
@@ -250,10 +366,16 @@ export default function AllProductsScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={closeEditQuantity}>
           <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
-            <Text style={[styles.modalTitle, rtlLabel]}>تعديل الكمية</Text>
+            <Text style={[styles.modalTitle, rtlLabel]}>تعديل الكمية الإجمالية</Text>
             {editProduct ? (
               <Text style={[styles.modalSubtitle, rtlLabel]}>
                 {editProduct.name}
+              </Text>
+            ) : null}
+            {editProduct ? (
+              <Text style={[styles.modalHint, rtlLabel]}>
+                يُوزَّع النقصان حسب الأقدمية (الدفعات الأقدم أولًا). الزيادة تُضاف
+                لأحدث دفعة.
               </Text>
             ) : null}
 
@@ -386,7 +508,69 @@ const styles = StyleSheet.create({
     color: "#444",
     textAlign: "center",
     marginTop: 6,
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  historyModalBox: {
+    width: "100%",
+    maxWidth: 360,
+    maxHeight: "78%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+  },
+  historySubtitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#334155",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  historyScroll: { maxHeight: 420 },
+  historyEmpty: {
+    textAlign: "center",
+    color: "#94a3b8",
+    paddingVertical: 20,
+    fontSize: 14,
+  },
+  historySubCard: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: "#f8fafc",
+  },
+  historySubTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+  historyQty: { fontWeight: "800" },
+  historyBadge: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1d4ed8",
+  },
+  historyMeta: {
+    fontSize: 13,
+    color: "#475569",
+    marginTop: 3,
+  },
+  historyCloseBtn: {
+    alignSelf: "center",
+    marginTop: 8,
+    backgroundColor: "#2563eb",
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 10,
   },
   stepperRow: {
     flexDirection: "row",

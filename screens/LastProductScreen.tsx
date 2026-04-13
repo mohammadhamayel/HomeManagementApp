@@ -7,6 +7,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  Pressable,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import DateInputField from "../components/DateInputField";
@@ -16,8 +17,10 @@ import {
   deleteProduct,
   insertProduct,
   updateProduct,
+  getProductGroupsForPicker,
   parseQuantityInput,
   type Product,
+  type ProductGroupPickerItem,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
@@ -33,10 +36,18 @@ export default function LastProductScreen() {
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [lastSnapshot, setLastSnapshot] = useState<Product | null>(null);
+  const [pickerItems, setPickerItems] = useState<ProductGroupPickerItem[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+
+  const loadPicker = useCallback(() => {
+    void (async () => {
+      setPickerItems(await getProductGroupsForPicker());
+    })();
+  }, []);
 
   const fillFromProduct = useCallback((p: Product) => {
     setName(p.name);
-    setQuantity(String(p.quantity));
+    setQuantity(String(p.primaryLineQuantity));
     setExpiryAlertDays(
       p.expiryAlertDays > 0 ? String(p.expiryAlertDays) : ""
     );
@@ -45,6 +56,7 @@ export default function LastProductScreen() {
     setCategory(p.category || "food");
     setExpiryDate(new Date(p.expiryDate));
     setEditingProduct(p);
+    setSelectedGroupId(null);
   }, []);
 
   const resetFormForNew = useCallback(() => {
@@ -56,12 +68,32 @@ export default function LastProductScreen() {
     setCategory("food");
     setExpiryDate(new Date());
     setEditingProduct(null);
+    setSelectedGroupId(null);
+  }, []);
+
+  const onNameChange = useCallback(
+    (t: string) => {
+      setName(t);
+      if (selectedGroupId != null) {
+        const picked = pickerItems.find((p) => p.id === selectedGroupId);
+        if (!picked || picked.name.trim() !== t.trim()) {
+          setSelectedGroupId(null);
+        }
+      }
+    },
+    [pickerItems, selectedGroupId]
+  );
+
+  const pickExistingGroup = useCallback((item: ProductGroupPickerItem) => {
+    setName(item.name);
+    setSelectedGroupId(item.id);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       void (async () => {
+        loadPicker();
         const last = await getLastProduct();
         if (cancelled) return;
         setLastSnapshot(last);
@@ -71,7 +103,7 @@ export default function LastProductScreen() {
       return () => {
         cancelled = true;
       };
-    }, [resetFormForNew, refreshNotifications])
+    }, [loadPicker, resetFormForNew, refreshNotifications])
   );
 
   const save = async () => {
@@ -94,11 +126,15 @@ export default function LastProductScreen() {
         category,
         notes,
         alertDays,
-        lowQty
+        lowQty,
+        selectedGroupId != null
+          ? { existingGroupId: selectedGroupId }
+          : undefined
       );
       const inserted = await getLastProduct();
       setLastSnapshot(inserted);
       resetFormForNew();
+      loadPicker();
       void refreshNotifications();
       if (expiryDate < new Date()) {
         Alert.alert("تنبيه", "⚠️ المنتج منتهي الصلاحية");
@@ -106,24 +142,26 @@ export default function LastProductScreen() {
       return;
     }
 
-    const updated: Product = {
+    await updateProduct({
       id: editingProduct.id,
+      primaryLineId: editingProduct.primaryLineId,
       name: name.trim(),
       quantity: qty,
+      primaryLineQuantity: qty,
       purchaseDate: editingProduct.purchaseDate,
       expiryDate: eDate,
       category,
       notes,
       expiryAlertDays: alertDays,
       lowQtyThreshold: lowQty,
-    };
-    await updateProduct(updated);
+    });
     if (expiryDate < new Date()) {
       Alert.alert("تنبيه", "⚠️ المنتج منتهي الصلاحية");
     }
     const again = await getLastProduct();
     setLastSnapshot(again);
     resetFormForNew();
+    loadPicker();
     void refreshNotifications();
   };
 
@@ -140,12 +178,19 @@ export default function LastProductScreen() {
             const nextLast = await getLastProduct();
             setLastSnapshot(nextLast);
             resetFormForNew();
+            loadPicker();
             void refreshNotifications();
           })();
         },
       },
     ]);
   };
+
+  const nameQuery = name.trim().toLowerCase();
+  const suggestionList = pickerItems.filter((p) => {
+    if (!nameQuery) return false;
+    return p.name.toLowerCase().includes(nameQuery);
+  });
 
   return (
     <ScrollView
@@ -155,17 +200,45 @@ export default function LastProductScreen() {
     >
       <Text style={[styles.hint, rtlLabel]}>
         {editingProduct
-          ? "وضع التعديل: عدل البيانات ثم اضغط حفظ."
-          : "أدخل منتج جديد. بعد الحفظ يظهر آخر منتج أسفل الفورم."}
+          ? "وضع التعديل: يُعدّل سجل الدفعة الظاهر (الأقدم بكمية متبقية) والاسم على مستوى المنتج."
+          : selectedGroupId != null
+            ? "إضافة سجل جديد لمنتج موجود — الكمية على البطاقة الرئيسية ستُجمع مع السجلات السابقة."
+            : "منتج جديد، أو اكتب الاسم واختر منتجًا من القائمة لإضافة دفعة جديدة بنفس الاسم."}
       </Text>
 
       <TextInput
-        placeholder="اسم المنتج"
+        placeholder="اسم المنتج (كتابة أو اختيار من القائمة)"
         placeholderTextColor="#94a3b8"
         style={[styles.input, rtlInput]}
         value={name}
-        onChangeText={setName}
+        onChangeText={onNameChange}
       />
+
+      {suggestionList.length > 0 && !editingProduct ? (
+        <View style={styles.suggestionsBox}>
+          <Text style={[styles.suggestionsTitle, rtlLabel]}>
+            منتجات مسجّلة (اختر لربط الدفعة الجديدة)
+          </Text>
+          <ScrollView
+            style={styles.suggestionsList}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            {suggestionList.map((item) => (
+              <Pressable
+                key={item.id}
+                style={[
+                  styles.suggestionRow,
+                  selectedGroupId === item.id ? styles.suggestionRowActive : null,
+                ]}
+                onPress={() => pickExistingGroup(item)}
+              >
+                <Text style={[styles.suggestionText, rtlLabel]}>{item.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <TextInput
         placeholder="الكمية (رقم)"
@@ -241,17 +314,19 @@ export default function LastProductScreen() {
             <View style={styles.cardDetails}>
               <Text style={[styles.cardName, rtlLabel]}>{lastSnapshot.name}</Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
-                الكمية: <Text style={styles.quantityValue}>{lastSnapshot.quantity}</Text>
+                الكمية الإجمالية:{" "}
+                <Text style={styles.quantityValue}>{lastSnapshot.quantity}</Text>
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
                 التصنيف: {lastSnapshot.category}
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
-                تاريخ الإضافة:{" "}
+                تاريخ الإضافة (الدفعة الظاهرة):{" "}
                 {new Date(lastSnapshot.purchaseDate).toLocaleDateString("ar")}
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
-                انتهاء: {new Date(lastSnapshot.expiryDate).toLocaleDateString("ar")}
+                انتهاء (الدفعة الظاهرة):{" "}
+                {new Date(lastSnapshot.expiryDate).toLocaleDateString("ar")}
               </Text>
               {lastSnapshot.expiryAlertDays > 0 ? (
                 <Text style={[styles.cardMeta, rtlLabel]}>
@@ -293,6 +368,31 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 16,
   },
+  suggestionsBox: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: "#f8fafc",
+    overflow: "hidden",
+  },
+  suggestionsTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  suggestionsList: { maxHeight: 160 },
+  suggestionRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  suggestionRowActive: { backgroundColor: "#dbeafe" },
+  suggestionText: { fontSize: 15, color: "#0f172a" },
   notesInput: {
     minHeight: 80,
     textAlignVertical: "top",
