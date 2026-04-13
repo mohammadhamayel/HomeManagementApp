@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,11 @@ import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 
 export default function AllProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [nameFilter, setNameFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [expiryFilter, setExpiryFilter] = useState<"all" | "expired" | "valid">(
+    "all"
+  );
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [editQtyDraft, setEditQtyDraft] = useState("");
@@ -89,19 +94,110 @@ export default function AllProductsScreen() {
     );
   };
 
+  const filteredProducts = useMemo(() => {
+    const nameQ = nameFilter.trim().toLowerCase();
+    const categoryQ = categoryFilter.trim().toLowerCase();
+    const now = new Date();
+
+    return products.filter((item) => {
+      if (nameQ && !item.name.toLowerCase().includes(nameQ)) return false;
+      if (categoryQ && !item.category.toLowerCase().includes(categoryQ)) {
+        return false;
+      }
+      if (expiryFilter === "expired" && new Date(item.expiryDate) >= now) {
+        return false;
+      }
+      if (expiryFilter === "valid" && new Date(item.expiryDate) < now) {
+        return false;
+      }
+      return true;
+    });
+  }, [products, nameFilter, categoryFilter, expiryFilter]);
+
   return (
     <View style={styles.container}>
+      <View style={styles.filtersWrap}>
+        <Text style={[styles.filtersTitle, rtlLabel]}>فلترة المنتجات</Text>
+        <TextInput
+          placeholder="بحث باسم المنتج"
+          placeholderTextColor="#94a3b8"
+          style={[styles.filterInput, rtlInput]}
+          value={nameFilter}
+          onChangeText={setNameFilter}
+        />
+        <TextInput
+          placeholder="بحث بالتصنيف"
+          placeholderTextColor="#94a3b8"
+          style={[styles.filterInput, rtlInput]}
+          value={categoryFilter}
+          onChangeText={setCategoryFilter}
+        />
+        <View style={styles.filterChips}>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              expiryFilter === "all" ? styles.chipActive : undefined,
+            ]}
+            onPress={() => setExpiryFilter("all")}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                expiryFilter === "all" ? styles.chipTextActive : undefined,
+              ]}
+            >
+              الكل
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              expiryFilter === "expired" ? styles.chipActive : undefined,
+            ]}
+            onPress={() => setExpiryFilter("expired")}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                expiryFilter === "expired" ? styles.chipTextActive : undefined,
+              ]}
+            >
+              منتهي
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              expiryFilter === "valid" ? styles.chipActive : undefined,
+            ]}
+            onPress={() => setExpiryFilter("valid")}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                expiryFilter === "valid" ? styles.chipTextActive : undefined,
+              ]}
+            >
+              غير منتهي
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <FlatList
-        data={products}
+        data={filteredProducts}
         keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={products.length === 0 ? styles.emptyList : undefined}
+        contentContainerStyle={
+          filteredProducts.length === 0 ? styles.emptyList : undefined
+        }
         ListEmptyComponent={
-          <Text style={[styles.empty, rtlLabel]}>لا توجد منتجات بعد</Text>
+          <Text style={[styles.empty, rtlLabel]}>
+            لا توجد منتجات بهذه الفلاتر
+          </Text>
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.name, rtlLabel]}>{item.name}</Text>
+            <View style={styles.cardTop}>
               <View style={styles.actions}>
                 <TouchableOpacity
                   style={styles.iconBtn}
@@ -118,22 +214,25 @@ export default function AllProductsScreen() {
                   <Text style={styles.icon}>🗑️</Text>
                 </TouchableOpacity>
               </View>
+              <View style={styles.details}>
+                <Text style={[styles.name, rtlLabel]}>{item.name}</Text>
+                <Text style={[styles.quantityLine, rtlLabel]}>
+                  الكمية: <Text style={styles.quantityValue}>{item.quantity}</Text>
+                </Text>
+                <Text style={[styles.meta, rtlLabel]}>
+                  التصنيف: {item.category}
+                </Text>
+                <Text style={[styles.meta, rtlLabel]}>
+                  شراء: {new Date(item.purchaseDate).toLocaleDateString("ar")}
+                </Text>
+                <Text style={[styles.meta, rtlLabel]}>
+                  انتهاء: {new Date(item.expiryDate).toLocaleDateString("ar")}
+                </Text>
+                {item.notes ? (
+                  <Text style={[styles.meta, rtlLabel]}>ملاحظات: {item.notes}</Text>
+                ) : null}
+              </View>
             </View>
-            <Text style={[styles.quantityLine, rtlLabel]}>
-              الكمية: <Text style={styles.quantityValue}>{item.quantity}</Text>
-            </Text>
-            <Text style={[styles.meta, rtlLabel]}>
-              التصنيف: {item.category}
-            </Text>
-            <Text style={[styles.meta, rtlLabel]}>
-              شراء: {new Date(item.purchaseDate).toLocaleDateString("ar")}
-            </Text>
-            <Text style={[styles.meta, rtlLabel]}>
-              انتهاء: {new Date(item.expiryDate).toLocaleDateString("ar")}
-            </Text>
-            {item.notes ? (
-              <Text style={[styles.meta, rtlLabel]}>ملاحظات: {item.notes}</Text>
-            ) : null}
           </View>
         )}
       />
@@ -202,6 +301,38 @@ export default function AllProductsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  filtersWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    marginBottom: 4,
+  },
+  filtersTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: "#334155",
+  },
+  filterInput: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    fontSize: 15,
+  },
+  filterChips: { flexDirection: "row-reverse", gap: 8, marginBottom: 4 },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "#f1f5f9",
+  },
+  chipActive: { backgroundColor: "#dbeafe" },
+  chipText: { color: "#334155", fontSize: 13, fontWeight: "600" },
+  chipTextActive: { color: "#1d4ed8" },
   emptyList: { flexGrow: 1, justifyContent: "center" },
   empty: { textAlign: "center", color: "#64748b", fontSize: 16, padding: 24 },
   card: {
@@ -213,14 +344,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#fafafa",
   },
-  cardHeader: {
+  cardTop: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    alignItems: "flex-start",
+    gap: 10,
   },
-  name: { fontSize: 17, fontWeight: "700", flex: 1 },
-  actions: { flexDirection: "row", gap: 4 },
+  details: { flex: 1, alignItems: "flex-end" },
+  name: { fontSize: 17, fontWeight: "700" },
+  actions: { flexDirection: "row", gap: 2, marginTop: -2 },
   iconBtn: { padding: 6 },
   icon: { fontSize: 22 },
   quantityLine: { fontSize: 16, marginTop: 6 },

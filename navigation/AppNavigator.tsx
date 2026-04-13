@@ -54,7 +54,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Text style={styles.drawerUser}>👤 {user?.username}</Text>
       </View>
 
-      <Item name="LastProduct" icon="🏷️" label="آخر منتج" />
+      <Item name="LastProduct" icon="🏷️" label="منيج جديد" />
       <Item name="AllProducts" icon="📋" label="جميع المنتجات" />
       {user?.isAdmin ? (
         <Item name="ManageUsers" icon="👥" label="المستخدمون" />
@@ -101,7 +101,11 @@ function MainDrawer() {
         drawerStyle: { width: 280 },
       })}
     >
-      <Drawer.Screen name="LastProduct" component={LastProductScreen} />
+      <Drawer.Screen
+        name="LastProduct"
+        component={LastProductScreen}
+        options={{ title: "منيج جديد" }}
+      />
       <Drawer.Screen name="AllProducts" component={AllProductsScreen} />
       <Drawer.Screen name="ManageUsers" component={ManageUsersScreen} />
     </Drawer.Navigator>

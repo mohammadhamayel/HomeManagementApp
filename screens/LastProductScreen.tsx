@@ -13,6 +13,7 @@ import DateInputField from "../components/DateInputField";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 import {
   getLastProduct,
+  deleteProduct,
   insertProduct,
   updateProduct,
   parseQuantityInput,
@@ -26,10 +27,7 @@ export default function LastProductScreen() {
   const [category, setCategory] = useState("food");
   const [purchaseDate, setPurchaseDate] = useState(new Date());
   const [expiryDate, setExpiryDate] = useState(new Date());
-  /** null = no row loaded yet; number = editing this id */
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [creatingNew, setCreatingNew] = useState(false);
-  /** Loaded async for hints / «منتج جديد» visibility */
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [lastSnapshot, setLastSnapshot] = useState<Product | null>(null);
 
   const fillFromProduct = useCallback((p: Product) => {
@@ -39,8 +37,7 @@ export default function LastProductScreen() {
     setCategory(p.category || "food");
     setPurchaseDate(new Date(p.purchaseDate));
     setExpiryDate(new Date(p.expiryDate));
-    setEditingId(p.id);
-    setCreatingNew(false);
+    setEditingProduct(p);
   }, []);
 
   const resetFormForNew = useCallback(() => {
@@ -50,8 +47,7 @@ export default function LastProductScreen() {
     setCategory("food");
     setPurchaseDate(new Date());
     setExpiryDate(new Date());
-    setEditingId(null);
-    setCreatingNew(true);
+    setEditingProduct(null);
   }, []);
 
   useFocusEffect(
@@ -61,17 +57,12 @@ export default function LastProductScreen() {
         const last = await getLastProduct();
         if (cancelled) return;
         setLastSnapshot(last);
-        if (last) {
-          fillFromProduct(last);
-          setCreatingNew(false);
-        } else {
-          resetFormForNew();
-        }
+        resetFormForNew();
       })();
       return () => {
         cancelled = true;
       };
-    }, [fillFromProduct, resetFormForNew])
+    }, [resetFormForNew])
   );
 
   const save = async () => {
@@ -83,12 +74,11 @@ export default function LastProductScreen() {
     const pDate = purchaseDate.toISOString();
     const eDate = expiryDate.toISOString();
 
-    if (creatingNew || editingId === null) {
+    if (!editingProduct) {
       await insertProduct(name.trim(), qty, pDate, eDate, category, notes);
-      setCreatingNew(false);
       const inserted = await getLastProduct();
       setLastSnapshot(inserted);
-      if (inserted) fillFromProduct(inserted);
+      resetFormForNew();
       if (expiryDate < new Date()) {
         Alert.alert("تنبيه", "⚠️ المنتج منتهي الصلاحية");
       }
@@ -96,7 +86,7 @@ export default function LastProductScreen() {
     }
 
     const updated: Product = {
-      id: editingId,
+      id: editingProduct.id,
       name: name.trim(),
       quantity: qty,
       purchaseDate: pDate,
@@ -110,7 +100,26 @@ export default function LastProductScreen() {
     }
     const again = await getLastProduct();
     setLastSnapshot(again);
-    if (again) fillFromProduct(again);
+    resetFormForNew();
+  };
+
+  const onDeleteLast = () => {
+    if (!lastSnapshot) return;
+    Alert.alert("حذف", `حذف «${lastSnapshot.name}»؟`, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            await deleteProduct(lastSnapshot.id);
+            const nextLast = await getLastProduct();
+            setLastSnapshot(nextLast);
+            resetFormForNew();
+          })();
+        },
+      },
+    ]);
   };
 
   return (
@@ -120,16 +129,10 @@ export default function LastProductScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={[styles.hint, rtlLabel]}>
-        {lastSnapshot && !creatingNew
-          ? "آخر منتج مضاف — يمكنك تعديل كل الحقول ثم حفظ التعديلات"
-          : "لا يوجد منتج بعد — أدخل بيانات أول منتج أو اضغط «منتج جديد» بعد وجود منتجات"}
+        {editingProduct
+          ? "وضع التعديل: عدل البيانات ثم اضغط حفظ."
+          : "أدخل منتج جديد. بعد الحفظ يظهر آخر منتج أسفل الفورم."}
       </Text>
-
-      {lastSnapshot ? (
-        <TouchableOpacity style={styles.newBtn} onPress={resetFormForNew}>
-          <Text style={[styles.newBtnText, rtlLabel]}>➕ منتج جديد</Text>
-        </TouchableOpacity>
-      ) : null}
 
       <TextInput
         placeholder="اسم المنتج"
@@ -181,9 +184,48 @@ export default function LastProductScreen() {
 
       <TouchableOpacity style={styles.saveBtn} onPress={() => void save()}>
         <Text style={[styles.saveBtnText, rtlLabel]}>
-          {creatingNew || editingId === null ? "💾 حفظ المنتج" : "💾 حفظ التعديلات"}
+          {editingProduct ? "💾 حفظ التعديلات" : "💾 حفظ المنتج"}
         </Text>
       </TouchableOpacity>
+
+      {lastSnapshot ? (
+        <View style={styles.card}>
+          <View style={styles.cardTop}>
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => fillFromProduct(lastSnapshot)}
+              >
+                <Text style={styles.icon}>✏️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={onDeleteLast}>
+                <Text style={styles.icon}>🗑️</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cardDetails}>
+              <Text style={[styles.cardName, rtlLabel]}>{lastSnapshot.name}</Text>
+              <Text style={[styles.cardMeta, rtlLabel]}>
+                الكمية: <Text style={styles.quantityValue}>{lastSnapshot.quantity}</Text>
+              </Text>
+              <Text style={[styles.cardMeta, rtlLabel]}>
+                التصنيف: {lastSnapshot.category}
+              </Text>
+              <Text style={[styles.cardMeta, rtlLabel]}>
+                شراء:{" "}
+                {new Date(lastSnapshot.purchaseDate).toLocaleDateString("ar")}
+              </Text>
+              <Text style={[styles.cardMeta, rtlLabel]}>
+                انتهاء: {new Date(lastSnapshot.expiryDate).toLocaleDateString("ar")}
+              </Text>
+              {lastSnapshot.notes ? (
+                <Text style={[styles.cardMeta, rtlLabel]}>
+                  ملاحظات: {lastSnapshot.notes}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -197,14 +239,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 22,
   },
-  newBtn: {
-    backgroundColor: "#e0f2fe",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 14,
-    alignItems: "center",
-  },
-  newBtnText: { fontSize: 16, fontWeight: "700", color: "#0369a1" },
   input: {
     borderWidth: 1,
     borderColor: "#cbd5e1",
@@ -225,4 +259,28 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   saveBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  card: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    backgroundColor: "#fafafa",
+    marginTop: 16,
+    padding: 14,
+  },
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: -2,
+  },
+  iconBtn: { padding: 6 },
+  icon: { fontSize: 22 },
+  cardDetails: { flex: 1, alignItems: "flex-end" },
+  cardName: { fontSize: 17, fontWeight: "700" },
+  cardMeta: { fontSize: 14, color: "#475569", marginTop: 3 },
+  quantityValue: { fontWeight: "800", fontSize: 16 },
 });
