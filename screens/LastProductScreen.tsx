@@ -19,13 +19,16 @@ import {
   parseQuantityInput,
   type Product,
 } from "../database";
+import { useInventoryNotifications } from "../context/NotificationContext";
 
 export default function LastProductScreen() {
+  const { refreshNotifications } = useInventoryNotifications();
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [expiryAlertDays, setExpiryAlertDays] = useState("");
+  const [lowQtyThreshold, setLowQtyThreshold] = useState("");
   const [notes, setNotes] = useState("");
   const [category, setCategory] = useState("food");
-  const [purchaseDate, setPurchaseDate] = useState(new Date());
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [lastSnapshot, setLastSnapshot] = useState<Product | null>(null);
@@ -33,9 +36,12 @@ export default function LastProductScreen() {
   const fillFromProduct = useCallback((p: Product) => {
     setName(p.name);
     setQuantity(String(p.quantity));
+    setExpiryAlertDays(
+      p.expiryAlertDays > 0 ? String(p.expiryAlertDays) : ""
+    );
+    setLowQtyThreshold(p.lowQtyThreshold > 0 ? String(p.lowQtyThreshold) : "");
     setNotes(p.notes);
     setCategory(p.category || "food");
-    setPurchaseDate(new Date(p.purchaseDate));
     setExpiryDate(new Date(p.expiryDate));
     setEditingProduct(p);
   }, []);
@@ -43,9 +49,10 @@ export default function LastProductScreen() {
   const resetFormForNew = useCallback(() => {
     setName("");
     setQuantity("");
+    setExpiryAlertDays("");
+    setLowQtyThreshold("");
     setNotes("");
     setCategory("food");
-    setPurchaseDate(new Date());
     setExpiryDate(new Date());
     setEditingProduct(null);
   }, []);
@@ -58,11 +65,12 @@ export default function LastProductScreen() {
         if (cancelled) return;
         setLastSnapshot(last);
         resetFormForNew();
+        void refreshNotifications();
       })();
       return () => {
         cancelled = true;
       };
-    }, [resetFormForNew])
+    }, [resetFormForNew, refreshNotifications])
   );
 
   const save = async () => {
@@ -71,14 +79,26 @@ export default function LastProductScreen() {
       Alert.alert("خطأ", "أدخل اسم المنتج وكمية صحيحة");
       return;
     }
-    const pDate = purchaseDate.toISOString();
+    const alertDays = parseQuantityInput(expiryAlertDays) ?? 0;
+    const lowQty = parseQuantityInput(lowQtyThreshold) ?? 0;
     const eDate = expiryDate.toISOString();
 
     if (!editingProduct) {
-      await insertProduct(name.trim(), qty, pDate, eDate, category, notes);
+      const pDate = new Date().toISOString();
+      await insertProduct(
+        name.trim(),
+        qty,
+        pDate,
+        eDate,
+        category,
+        notes,
+        alertDays,
+        lowQty
+      );
       const inserted = await getLastProduct();
       setLastSnapshot(inserted);
       resetFormForNew();
+      void refreshNotifications();
       if (expiryDate < new Date()) {
         Alert.alert("تنبيه", "⚠️ المنتج منتهي الصلاحية");
       }
@@ -89,10 +109,12 @@ export default function LastProductScreen() {
       id: editingProduct.id,
       name: name.trim(),
       quantity: qty,
-      purchaseDate: pDate,
+      purchaseDate: editingProduct.purchaseDate,
       expiryDate: eDate,
       category,
       notes,
+      expiryAlertDays: alertDays,
+      lowQtyThreshold: lowQty,
     };
     await updateProduct(updated);
     if (expiryDate < new Date()) {
@@ -101,6 +123,7 @@ export default function LastProductScreen() {
     const again = await getLastProduct();
     setLastSnapshot(again);
     resetFormForNew();
+    void refreshNotifications();
   };
 
   const onDeleteLast = () => {
@@ -116,6 +139,7 @@ export default function LastProductScreen() {
             const nextLast = await getLastProduct();
             setLastSnapshot(nextLast);
             resetFormForNew();
+            void refreshNotifications();
           })();
         },
       },
@@ -152,6 +176,24 @@ export default function LastProductScreen() {
       />
 
       <TextInput
+        placeholder="تنبيه انتهاء الصلاحية (أيام، 0 = بدون)"
+        placeholderTextColor="#94a3b8"
+        style={[styles.input, rtlInput]}
+        keyboardType="number-pad"
+        value={expiryAlertDays}
+        onChangeText={(t) => setExpiryAlertDays(t.replace(/[^0-9]/g, ""))}
+      />
+
+      <TextInput
+        placeholder="تنبيه الكمية (حد أقصى للتنبيه، 0 = بدون)"
+        placeholderTextColor="#94a3b8"
+        style={[styles.input, rtlInput]}
+        keyboardType="number-pad"
+        value={lowQtyThreshold}
+        onChangeText={(t) => setLowQtyThreshold(t.replace(/[^0-9]/g, ""))}
+      />
+
+      <TextInput
         placeholder="التصنيف"
         placeholderTextColor="#94a3b8"
         style={[styles.input, rtlInput]}
@@ -166,13 +208,6 @@ export default function LastProductScreen() {
         value={notes}
         onChangeText={setNotes}
         multiline
-      />
-
-      <DateInputField
-        label="📅 تاريخ الشراء"
-        value={purchaseDate}
-        onChange={setPurchaseDate}
-        placeholder="يوم/شهر/سنة"
       />
 
       <DateInputField
@@ -211,12 +246,22 @@ export default function LastProductScreen() {
                 التصنيف: {lastSnapshot.category}
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
-                شراء:{" "}
+                تاريخ الإضافة:{" "}
                 {new Date(lastSnapshot.purchaseDate).toLocaleDateString("ar")}
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
                 انتهاء: {new Date(lastSnapshot.expiryDate).toLocaleDateString("ar")}
               </Text>
+              {lastSnapshot.expiryAlertDays > 0 ? (
+                <Text style={[styles.cardMeta, rtlLabel]}>
+                  تنبيه انتهاء: خلال {lastSnapshot.expiryAlertDays} يومًا أو أقل
+                </Text>
+              ) : null}
+              {lastSnapshot.lowQtyThreshold > 0 ? (
+                <Text style={[styles.cardMeta, rtlLabel]}>
+                  تنبيه كمية عند: {lastSnapshot.lowQtyThreshold} أو أقل
+                </Text>
+              ) : null}
               {lastSnapshot.notes ? (
                 <Text style={[styles.cardMeta, rtlLabel]}>
                   ملاحظات: {lastSnapshot.notes}

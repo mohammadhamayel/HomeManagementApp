@@ -18,9 +18,11 @@ import {
   parseQuantityInput,
   type Product,
 } from "../database";
+import { useInventoryNotifications } from "../context/NotificationContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 
 export default function AllProductsScreen() {
+  const { refreshNotifications } = useInventoryNotifications();
   const [products, setProducts] = useState<Product[]>([]);
   const [nameFilter, setNameFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -34,8 +36,9 @@ export default function AllProductsScreen() {
   const load = useCallback(() => {
     void (async () => {
       setProducts(await getAllProducts());
+      void refreshNotifications();
     })();
-  }, []);
+  }, [refreshNotifications]);
 
   useFocusEffect(
     useCallback(() => {
@@ -223,7 +226,8 @@ export default function AllProductsScreen() {
                   التصنيف: {item.category}
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
-                  شراء: {new Date(item.purchaseDate).toLocaleDateString("ar")}
+                  تاريخ الإضافة:{" "}
+                  {new Date(item.purchaseDate).toLocaleDateString("ar")}
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
                   انتهاء: {new Date(item.expiryDate).toLocaleDateString("ar")}

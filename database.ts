@@ -27,6 +27,10 @@ export type Product = {
   expiryDate: string;
   category: string;
   notes: string;
+  /** Alert when calendar days until expiry are at most this value (0 = off). */
+  expiryAlertDays: number;
+  /** Alert when quantity is at or below this value (0 = off). */
+  lowQtyThreshold: number;
 };
 
 export type DbUser = {
@@ -54,6 +58,24 @@ export function normalizeProductRow(row: Record<string, unknown>): Product {
     quantity = parsed ?? 0;
   }
 
+  const expiryAlertRaw = row.expiry_alert_days ?? row.expiryAlertDays;
+  let expiryAlertDays = 0;
+  if (typeof expiryAlertRaw === "number" && Number.isFinite(expiryAlertRaw)) {
+    expiryAlertDays = Math.max(0, Math.trunc(expiryAlertRaw));
+  } else if (typeof expiryAlertRaw === "string" && expiryAlertRaw.trim() !== "") {
+    const parsed = parseQuantityInput(expiryAlertRaw);
+    expiryAlertDays = parsed ?? 0;
+  }
+
+  const lowQtyRaw = row.low_qty_threshold ?? row.lowQtyThreshold;
+  let lowQtyThreshold = 0;
+  if (typeof lowQtyRaw === "number" && Number.isFinite(lowQtyRaw)) {
+    lowQtyThreshold = Math.max(0, Math.trunc(lowQtyRaw));
+  } else if (typeof lowQtyRaw === "string" && lowQtyRaw.trim() !== "") {
+    const parsed = parseQuantityInput(lowQtyRaw);
+    lowQtyThreshold = parsed ?? 0;
+  }
+
   return {
     id: Number(row.id),
     name: String(row.name ?? ""),
@@ -62,6 +84,8 @@ export function normalizeProductRow(row: Record<string, unknown>): Product {
     expiryDate: String(row.expiryDate ?? ""),
     category: String(row.category ?? ""),
     notes: String(row.notes ?? ""),
+    expiryAlertDays,
+    lowQtyThreshold,
   };
 }
 
@@ -77,16 +101,35 @@ export function initDB(): Promise<void> {
           purchaseDate TEXT,
           expiryDate TEXT,
           category TEXT,
-          notes TEXT
+          notes TEXT,
+          expiry_alert_days INTEGER NOT NULL DEFAULT 0,
+          low_qty_threshold INTEGER NOT NULL DEFAULT 0
         );
       `);
 
-      const productCols = await db.getAllAsync<{ name: string }>(
-        "PRAGMA table_info(products)"
-      );
-      if (!productCols.some((c) => c.name === "quantity")) {
+      const readProductColNames = async () => {
+        const cols = await db.getAllAsync<{ name: string }>(
+          "PRAGMA table_info(products)"
+        );
+        return new Set(cols.map((c) => c.name));
+      };
+
+      let productColNames = await readProductColNames();
+      if (!productColNames.has("quantity")) {
         await db.execAsync(
           "ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 0"
+        );
+        productColNames = await readProductColNames();
+      }
+      if (!productColNames.has("expiry_alert_days")) {
+        await db.execAsync(
+          "ALTER TABLE products ADD COLUMN expiry_alert_days INTEGER NOT NULL DEFAULT 0"
+        );
+        productColNames = await readProductColNames();
+      }
+      if (!productColNames.has("low_qty_threshold")) {
+        await db.execAsync(
+          "ALTER TABLE products ADD COLUMN low_qty_threshold INTEGER NOT NULL DEFAULT 0"
         );
       }
 
@@ -124,7 +167,7 @@ export async function getLastProduct(): Promise<Product | null> {
   await initDB();
   const db = await ensureDb();
   const row = await db.getFirstAsync<Record<string, unknown>>(
-    "SELECT id, name, quantity, purchaseDate, expiryDate, category, notes FROM products ORDER BY id DESC LIMIT 1"
+    "SELECT id, name, quantity, purchaseDate, expiryDate, category, notes, expiry_alert_days, low_qty_threshold FROM products ORDER BY id DESC LIMIT 1"
   );
   return row ? normalizeProductRow(row) : null;
 }
@@ -133,7 +176,7 @@ export async function getAllProducts(): Promise<Product[]> {
   await initDB();
   const db = await ensureDb();
   const rows = await db.getAllAsync<Record<string, unknown>>(
-    "SELECT id, name, quantity, purchaseDate, expiryDate, category, notes FROM products ORDER BY id DESC"
+    "SELECT id, name, quantity, purchaseDate, expiryDate, category, notes, expiry_alert_days, low_qty_threshold FROM products ORDER BY id DESC"
   );
   return rows.map(normalizeProductRow);
 }
@@ -144,14 +187,25 @@ export async function insertProduct(
   purchaseDate: string,
   expiryDate: string,
   category: string,
-  notes: string
+  notes: string,
+  expiryAlertDays: number,
+  lowQtyThreshold: number
 ): Promise<void> {
   await initDB();
   const db = await ensureDb();
   await db.runAsync(
-    `INSERT INTO products (name, quantity, purchaseDate, expiryDate, category, notes)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, quantity, purchaseDate, expiryDate, category, notes]
+    `INSERT INTO products (name, quantity, purchaseDate, expiryDate, category, notes, expiry_alert_days, low_qty_threshold)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      name,
+      quantity,
+      purchaseDate,
+      expiryDate,
+      category,
+      notes,
+      expiryAlertDays,
+      lowQtyThreshold,
+    ]
   );
 }
 
@@ -159,7 +213,7 @@ export async function updateProduct(p: Product): Promise<void> {
   await initDB();
   const db = await ensureDb();
   await db.runAsync(
-    `UPDATE products SET name = ?, quantity = ?, purchaseDate = ?, expiryDate = ?, category = ?, notes = ?
+    `UPDATE products SET name = ?, quantity = ?, purchaseDate = ?, expiryDate = ?, category = ?, notes = ?, expiry_alert_days = ?, low_qty_threshold = ?
      WHERE id = ?`,
     [
       p.name,
@@ -168,6 +222,8 @@ export async function updateProduct(p: Product): Promise<void> {
       p.expiryDate,
       p.category,
       p.notes,
+      p.expiryAlertDays,
+      p.lowQtyThreshold,
       p.id,
     ]
   );

@@ -13,12 +13,55 @@ import {
   DrawerContentComponentProps,
 } from "@react-navigation/drawer";
 import { useAuth } from "../context/AuthContext";
+import {
+  NotificationProvider,
+  useInventoryNotifications,
+} from "../context/NotificationContext";
 import LoginScreen from "../screens/LoginScreen";
 import LastProductScreen from "../screens/LastProductScreen";
 import AllProductsScreen from "../screens/AllProductsScreen";
 import ManageUsersScreen from "../screens/ManageUsersScreen";
 
 const Drawer = createDrawerNavigator();
+
+function InventoryHeaderLeft() {
+  const { setPanelVisible, alertCount } = useInventoryNotifications();
+  return (
+    <View style={styles.headerLeftWrap}>
+      <TouchableOpacity
+        onPress={() => setPanelVisible(true)}
+        style={styles.bellWrap}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityLabel="التنبيهات"
+      >
+        <Text style={styles.bell}>🔔</Text>
+        {alertCount > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              {alertCount > 99 ? "99+" : String(alertCount)}
+            </Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function DrawerHeaderRight({
+  navigation,
+}: {
+  navigation: { toggleDrawer: () => void };
+}) {
+  return (
+    <TouchableOpacity
+      onPress={() => navigation.toggleDrawer()}
+      style={styles.headerRightWrap}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Text style={styles.burgerText}>☰</Text>
+    </TouchableOpacity>
+  );
+}
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { user, signOut } = useAuth();
@@ -88,16 +131,8 @@ function MainDrawer() {
         headerStyle: { backgroundColor: "#1a365d" },
         headerTintColor: "#fff",
         headerTitleStyle: { fontWeight: "700", fontSize: 18 },
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={() => navigation.toggleDrawer()}
-            style={styles.burger}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={styles.burgerText}>☰</Text>
-          </TouchableOpacity>
-        ),
-        headerLeft: () => null,
+        headerLeft: () => <InventoryHeaderLeft />,
+        headerRight: () => <DrawerHeaderRight navigation={navigation} />,
         drawerStyle: { width: 280 },
       })}
     >
@@ -125,7 +160,13 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      {user ? <MainDrawer /> : <LoginScreen />}
+      {user ? (
+        <NotificationProvider>
+          <MainDrawer />
+        </NotificationProvider>
+      ) : (
+        <LoginScreen />
+      )}
     </NavigationContainer>
   );
 }
@@ -137,7 +178,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f8fafc",
   },
-  burger: { marginRight: 14, padding: 4 },
+  headerLeftWrap: {
+    marginLeft: 10,
+    justifyContent: "center",
+  },
+  headerRightWrap: { marginRight: 14, padding: 4 },
+  bellWrap: { padding: 4, position: "relative" },
+  bell: { color: "#fff", fontSize: 22 },
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#dc2626",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   burgerText: { color: "#fff", fontSize: 26, fontWeight: "600" },
   drawerScroll: { paddingTop: 16, paddingBottom: 32 },
   drawerHeader: {
