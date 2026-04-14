@@ -16,8 +16,18 @@ function ensureDb(): Promise<SQLiteDatabase> {
 export const ADMIN_USERNAME = "m.hamayel";
 export const ADMIN_PASSWORD = "m.hamayel96";
 
+/** Built-in admin; must not be edited or deleted from the app. */
+export function isRootUsername(username: string): boolean {
+  return normalizeUsername(username) === normalizeUsername(ADMIN_USERNAME);
+}
+
 function normalizeUsername(value: string): string {
   return value.trim().toLowerCase();
+}
+
+/** Match login/create so Arabic-Indic / Persian digits still verify against ASCII in DB. */
+function normalizePasswordForAuth(value: string): string {
+  return toLatinDigits(value.trim());
 }
 
 /** One stock line (batch) inside a logical product group. */
@@ -239,19 +249,31 @@ export function initDB(): Promise<void> {
         );
       `);
 
-      const existingAdmin = await db.getFirstAsync<{ id: number }>(
-        "SELECT id FROM users WHERE lower(trim(username)) = ? LIMIT 1",
-        [normalizeUsername(ADMIN_USERNAME)]
+      // Prefer the row already marked admin so we never touch another account that only
+      // differs by case (SQLite username UNIQUE is case-sensitive).
+      let existingAdmin = await db.getFirstAsync<{ id: number }>(
+        "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
+        []
       );
+      if (!existingAdmin) {
+        existingAdmin = await db.getFirstAsync<{ id: number }>(
+          "SELECT id FROM users WHERE lower(trim(username)) = ? ORDER BY id ASC LIMIT 1",
+          [normalizeUsername(ADMIN_USERNAME)]
+        );
+      }
       if (!existingAdmin) {
         await db.runAsync(
           "INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)",
-          [ADMIN_USERNAME, ADMIN_PASSWORD]
+          [ADMIN_USERNAME, normalizePasswordForAuth(ADMIN_PASSWORD)]
         );
       } else {
         await db.runAsync(
           "UPDATE users SET username = ?, password = ?, is_admin = 1 WHERE id = ?",
-          [ADMIN_USERNAME, ADMIN_PASSWORD, existingAdmin.id]
+          [
+            ADMIN_USERNAME,
+            normalizePasswordForAuth(ADMIN_PASSWORD),
+            existingAdmin.id,
+          ]
         );
       }
     })();
@@ -511,16 +533,22 @@ export async function verifyLogin(
   await initDB();
   const db = await ensureDb();
   const normalizedUsername = normalizeUsername(username);
-  const row = await db.getFirstAsync<Record<string, unknown>>(
-    "SELECT id, username, is_admin FROM users WHERE lower(trim(username)) = ? AND password = ?",
-    [normalizedUsername, password]
+  const inputPass = normalizePasswordForAuth(password);
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    "SELECT id, username, is_admin, password FROM users WHERE lower(trim(username)) = ?",
+    [normalizedUsername]
   );
-  if (!row) return null;
-  return {
-    id: Number(row.id),
-    username: String(row.username),
-    isAdmin: Number(row.is_admin) === 1,
-  };
+  for (const row of rows) {
+    const stored = normalizePasswordForAuth(String(row.password ?? ""));
+    if (stored === inputPass) {
+      return {
+        id: Number(row.id),
+        username: String(row.username),
+        isAdmin: Number(row.is_admin) === 1,
+      };
+    }
+  }
+  return null;
 }
 
 export async function getAllDbUsers(): Promise<
@@ -539,13 +567,75 @@ export async function createDbUser(
 ): Promise<boolean> {
   await initDB();
   const db = await ensureDb();
+  const name = username.trim();
+  if (!name) return false;
+  const clash = await db.getFirstAsync<{ id: number }>(
+    "SELECT id FROM users WHERE lower(trim(username)) = ? LIMIT 1",
+    [normalizeUsername(name)]
+  );
+  if (clash) return false;
   try {
     await db.runAsync(
       "INSERT INTO users (username, password, is_admin) VALUES (?, ?, 0)",
-      [username.trim(), password]
+      [name, normalizePasswordForAuth(password)]
     );
     return true;
   } catch {
     return false;
   }
+}
+
+export async function updateDbUser(
+  id: number,
+  newUsername: string,
+  newPassword?: string
+): Promise<boolean> {
+  await initDB();
+  const db = await ensureDb();
+  const row = await db.getFirstAsync<{ username: string }>(
+    "SELECT username FROM users WHERE id = ?",
+    [id]
+  );
+  if (!row) return false;
+  if (isRootUsername(row.username)) return false;
+
+  const name = newUsername.trim();
+  if (!name) return false;
+  const pwdTrim = newPassword?.trim() ?? "";
+  const nameChanged =
+    normalizeUsername(name) !== normalizeUsername(row.username);
+  if (nameChanged) {
+    const clash = await db.getFirstAsync<{ id: number }>(
+      "SELECT id FROM users WHERE lower(trim(username)) = ? AND id != ? LIMIT 1",
+      [normalizeUsername(name), id]
+    );
+    if (clash) return false;
+  }
+  if (!nameChanged && !pwdTrim) return true;
+
+  if (pwdTrim) {
+    await db.runAsync(
+      "UPDATE users SET username = ?, password = ? WHERE id = ?",
+      [name, normalizePasswordForAuth(pwdTrim), id]
+    );
+  } else {
+    await db.runAsync("UPDATE users SET username = ? WHERE id = ?", [
+      name,
+      id,
+    ]);
+  }
+  return true;
+}
+
+export async function deleteDbUser(id: number): Promise<boolean> {
+  await initDB();
+  const db = await ensureDb();
+  const row = await db.getFirstAsync<{ username: string }>(
+    "SELECT username FROM users WHERE id = ?",
+    [id]
+  );
+  if (!row) return false;
+  if (isRootUsername(row.username)) return false;
+  await db.runAsync("DELETE FROM users WHERE id = ?", [id]);
+  return true;
 }

@@ -23,6 +23,7 @@ import LastProductScreen from "../screens/LastProductScreen";
 import AllProductsScreen from "../screens/AllProductsScreen";
 import OrderReceiptScreen from "../screens/OrderReceiptScreen";
 import ManageUsersScreen from "../screens/ManageUsersScreen";
+import { ADMIN_USERNAME } from "../database";
 
 const Drawer = createDrawerNavigator();
 
@@ -65,6 +66,10 @@ function DrawerHeaderRight({
   );
 }
 
+function canOpenManageUsers(username: string | undefined): boolean {
+  return username?.trim().toLowerCase() === ADMIN_USERNAME.trim().toLowerCase();
+}
+
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { user, signOut } = useAuth();
 
@@ -102,7 +107,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       <Item name="LastProduct" icon="🏷️" label="منيج جديد" />
       <Item name="AllProducts" icon="📋" label="جميع المنتجات" />
       <Item name="OrderReceipt" icon="⭐" label="الطلبية-الرشيتة" />
-      {user?.isAdmin ? (
+      {canOpenManageUsers(user?.username) ? (
         <Item name="ManageUsers" icon="👥" label="المستخدمون" />
       ) : null}
 
@@ -123,6 +128,9 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 }
 
 function MainDrawer() {
+  const { user } = useAuth();
+  const showManageUsers = canOpenManageUsers(user?.username);
+
   return (
     <Drawer.Navigator
       drawerContent={(p) => <CustomDrawerContent {...p} />}
@@ -154,7 +162,9 @@ function MainDrawer() {
         component={OrderReceiptScreen}
         options={{ title: "الطلبية-الرشيتة" }}
       />
-      <Drawer.Screen name="ManageUsers" component={ManageUsersScreen} />
+      {showManageUsers ? (
+        <Drawer.Screen name="ManageUsers" component={ManageUsersScreen} />
+      ) : null}
     </Drawer.Navigator>
   );
 }
