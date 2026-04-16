@@ -104,8 +104,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <Text style={styles.drawerUser}>👤 {user?.username}</Text>
       </View>
 
-      <Item name="LastProduct" icon="🏷️" label="منيج جديد" />
       <Item name="AllProducts" icon="📋" label="جميع المنتجات" />
+      <Item name="LastProduct" icon="🏷️" label="منيج جديد" />
       <Item name="OrderReceipt" icon="⭐" label="الطلبية-الرشيتة" />
       {canOpenManageUsers(user?.username) ? (
         <Item name="ManageUsers" icon="👥" label="المستخدمون" />
@@ -133,6 +133,7 @@ function MainDrawer() {
 
   return (
     <Drawer.Navigator
+      initialRouteName="AllProducts"
       drawerContent={(p) => <CustomDrawerContent {...p} />}
       screenOptions={({ navigation }) => ({
         headerShown: true,
@@ -148,14 +149,14 @@ function MainDrawer() {
       })}
     >
       <Drawer.Screen
-        name="LastProduct"
-        component={LastProductScreen}
-        options={{ title: "منيج جديد" }}
-      />
-      <Drawer.Screen
         name="AllProducts"
         component={AllProductsScreen}
         options={{ title: "جميع المنتجات" }}
+      />
+      <Drawer.Screen
+        name="LastProduct"
+        component={LastProductScreen}
+        options={{ title: "منيج جديد" }}
       />
       <Drawer.Screen
         name="OrderReceipt"
