@@ -144,6 +144,7 @@ export default function LastProductScreen() {
 
     await updateProduct({
       id: editingProduct.id,
+      groupSyncId: editingProduct.groupSyncId,
       primaryLineId: editingProduct.primaryLineId,
       name: name.trim(),
       quantity: qty,

@@ -24,12 +24,14 @@ import {
   type ProductLineRecord,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
+import { useInventorySync } from "../context/InventorySyncContext";
 import { useOrderList } from "../context/OrderListContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
 
 export default function AllProductsScreen() {
   const { refreshNotifications } = useInventoryNotifications();
+  const { inventoryRevision } = useInventorySync();
   const { isStarred, getEntry, upsertEntry, removeEntry } = useOrderList();
   const [products, setProducts] = useState<Product[]>([]);
   const [nameFilter, setNameFilter] = useState("");
@@ -59,7 +61,7 @@ export default function AllProductsScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load, inventoryRevision])
   );
 
   const openEditQuantity = (item: Product) => {
@@ -102,7 +104,7 @@ export default function AllProductsScreen() {
 
   const openStarModal = (item: Product) => {
     setStarProduct(item);
-    const existing = getEntry(item.id);
+    const existing = getEntry({ id: item.id, groupSyncId: item.groupSyncId });
     setStarQtyDraft(String(existing?.quantity ?? 1));
     setStarNotesDraft(existing?.notes ?? "");
     setStarModalVisible(true);
@@ -122,6 +124,7 @@ export default function AllProductsScreen() {
     }
     upsertEntry({
       productId: starProduct.id,
+      productGroupSyncId: starProduct.groupSyncId,
       productName: starProduct.name,
       quantity: q,
       notes: starNotesDraft,
@@ -131,7 +134,10 @@ export default function AllProductsScreen() {
 
   const removeStarFromOrder = () => {
     if (!starProduct) return;
-    removeEntry(starProduct.id);
+    removeEntry({
+      productId: starProduct.id,
+      productGroupSyncId: starProduct.groupSyncId,
+    });
     closeStarModal();
   };
 
@@ -290,12 +296,12 @@ export default function AllProductsScreen() {
               style={styles.starBtn}
               onPress={() => openStarModal(item)}
               accessibilityLabel={
-                isStarred(item.id) ? "تعديل الطلبية" : "إضافة للطلبية"
+                isStarred({ id: item.id, groupSyncId: item.groupSyncId }) ? "تعديل الطلبية" : "إضافة للطلبية"
               }
               hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             >
               <Text style={styles.starIcon}>
-                {isStarred(item.id) ? "★" : "☆"}
+                {isStarred({ id: item.id, groupSyncId: item.groupSyncId }) ? "★" : "☆"}
               </Text>
             </TouchableOpacity>
             <View style={styles.cardTop}>
@@ -512,7 +518,10 @@ export default function AllProductsScreen() {
             />
 
             <View style={styles.starModalActions}>
-              {starProduct && isStarred(starProduct.id) ? (
+              {starProduct && isStarred({
+                  id: starProduct.id,
+                  groupSyncId: starProduct.groupSyncId,
+                }) ? (
                 <TouchableOpacity
                   style={styles.starRemoveBtn}
                   onPress={removeStarFromOrder}
@@ -525,7 +534,10 @@ export default function AllProductsScreen() {
                 onPress={saveStarToOrder}
               >
                 <Text style={styles.modalBtnPrimaryText}>
-                  {starProduct && isStarred(starProduct.id) ? "حفظ" : "إضافة"}
+                  {starProduct && isStarred({
+                  id: starProduct.id,
+                  groupSyncId: starProduct.groupSyncId,
+                }) ? "حفظ" : "إضافة"}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -28,29 +28,62 @@ const ORDER_LIST_COLLECTION = "order_lists";
 
 export type OrderListEntry = {
   productId: number;
+  /** Stable group id for cross-device; preferred when set. */
+  productGroupSyncId?: string;
   productName: string;
   quantity: number;
   notes: string;
   checked: boolean;
 };
 
+/** Product identity for starring / order list rows (ties to SQLite after sync). */
+export type OrderListProductRef = {
+  id: number;
+  groupSyncId: string;
+};
+
+export type OrderListEntryTarget = {
+  productId: number;
+  productGroupSyncId?: string | null;
+};
+
 type OrderListContextValue = {
   entries: OrderListEntry[];
   loading: boolean;
-  isStarred: (productId: number) => boolean;
-  getEntry: (productId: number) => OrderListEntry | undefined;
+  isStarred: (product: OrderListProductRef) => boolean;
+  getEntry: (product: OrderListProductRef) => OrderListEntry | undefined;
   upsertEntry: (input: {
     productId: number;
+    productGroupSyncId: string;
     productName: string;
     quantity: number;
     notes: string;
   }) => void;
-  removeEntry: (productId: number) => void;
-  setEntryChecked: (productId: number, checked: boolean) => void;
-  syncProductNames: (products: { id: number; name: string }[]) => void;
+  removeEntry: (target: OrderListEntryTarget) => void;
+  setEntryChecked: (target: OrderListEntryTarget, checked: boolean) => void;
+  syncProductNames: (
+    products: { id: number; name: string; groupSyncId: string }[]
+  ) => void;
 };
 
 const OrderListContext = createContext<OrderListContextValue | null>(null);
+
+function matchesCatalogProduct(
+  e: OrderListEntry,
+  product: OrderListProductRef
+): boolean {
+  const sid = (e.productGroupSyncId ?? "").trim();
+  const gs = product.groupSyncId.trim();
+  if (sid !== "" && gs !== "" && sid === gs) return true;
+  if (sid === "" && e.productId === product.id) return true;
+  return false;
+}
+
+function matchesEntryTarget(e: OrderListEntry, t: OrderListEntryTarget): boolean {
+  const ts = (t.productGroupSyncId ?? "").trim();
+  if (ts !== "") return (e.productGroupSyncId ?? "").trim() === ts;
+  return e.productId === t.productId;
+}
 
 function normalizeEntries(raw: unknown): OrderListEntry[] {
   if (!Array.isArray(raw)) return [];
@@ -58,12 +91,32 @@ function normalizeEntries(raw: unknown): OrderListEntry[] {
     .map((row) => {
       if (!row || typeof row !== "object") return null;
       const o = row as Record<string, unknown>;
-      const productId = Number(o.productId);
       const quantity = Number(o.quantity);
-      if (!Number.isFinite(productId) || productId <= 0) return null;
       if (!Number.isFinite(quantity) || quantity < 0) return null;
+
+      const syncRaw = o.productGroupSyncId;
+      const productGroupSyncId =
+        typeof syncRaw === "string" && syncRaw.trim() !== ""
+          ? syncRaw.trim()
+          : undefined;
+
+      const productId = Number(o.productId);
+      if (productGroupSyncId) {
+        const pid =
+          Number.isFinite(productId) && productId > 0 ? Math.trunc(productId) : 0;
+        return {
+          productId: pid,
+          productGroupSyncId,
+          productName: String(o.productName ?? ""),
+          quantity: Math.max(0, Math.trunc(quantity)),
+          notes: String(o.notes ?? ""),
+          checked: Boolean(o.checked),
+        } satisfies OrderListEntry;
+      }
+
+      if (!Number.isFinite(productId) || productId <= 0) return null;
       return {
-        productId,
+        productId: Math.trunc(productId),
         productName: String(o.productName ?? ""),
         quantity: Math.max(0, Math.trunc(quantity)),
         notes: String(o.notes ?? ""),
@@ -88,7 +141,6 @@ function parseFirestoreEntries(data: DocumentData | undefined): OrderListEntry[]
   const entries = normalizeEntries(data.entries);
   if (entries.length > 0) return entries;
 
-  // Backward-compatible fallback if payload was persisted as JSON text.
   if (typeof data.payload === "string") {
     try {
       return normalizeEntries(JSON.parse(data.payload) as unknown);
@@ -187,34 +239,41 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
       unmounted = true;
       if (unsubscribeRemote) unsubscribeRemote();
     };
-  }, []);
+  }, [persistLocally]);
 
   const isStarred = useCallback(
-    (productId: number) => entries.some((e) => e.productId === productId),
+    (product: OrderListProductRef) =>
+      entries.some((e) => matchesCatalogProduct(e, product)),
     [entries]
   );
 
   const getEntry = useCallback(
-    (productId: number) => entries.find((e) => e.productId === productId),
+    (product: OrderListProductRef) =>
+      entries.find((e) => matchesCatalogProduct(e, product)),
     [entries]
   );
 
   const upsertEntry = useCallback(
     (input: {
       productId: number;
+      productGroupSyncId: string;
       productName: string;
       quantity: number;
       notes: string;
     }) => {
       const qty = Math.max(0, Math.trunc(input.quantity));
+      const syncId = input.productGroupSyncId.trim();
       setEntries((prev) => {
-        const idx = prev.findIndex((e) => e.productId === input.productId);
+        const idx = prev.findIndex(
+          (e) => (e.productGroupSyncId ?? "").trim() === syncId
+        );
         let next: OrderListEntry[];
         if (idx === -1) {
           next = [
             ...prev,
             {
               productId: input.productId,
+              productGroupSyncId: syncId,
               productName: input.productName,
               quantity: qty,
               notes: input.notes.trim(),
@@ -226,6 +285,8 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
           next = [...prev];
           next[idx] = {
             ...cur,
+            productId: input.productId,
+            productGroupSyncId: syncId,
             productName: input.productName,
             quantity: qty,
             notes: input.notes.trim(),
@@ -239,47 +300,65 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
     [persistLocally, persistRemotely]
   );
 
-  const removeEntry = useCallback((productId: number) => {
-    setEntries((prev) => {
-      const next = prev.filter((e) => e.productId !== productId);
-      persistLocally(next);
-      persistRemotely(next);
-      return next;
-    });
-  }, [persistLocally, persistRemotely]);
-
-  const setEntryChecked = useCallback((productId: number, checked: boolean) => {
-    setEntries((prev) => {
-      const next = prev.map((e) =>
-        e.productId === productId ? { ...e, checked } : e
-      );
-      persistLocally(next);
-      persistRemotely(next);
-      return next;
-    });
-  }, [persistLocally, persistRemotely]);
-
-  const syncProductNames = useCallback((products: { id: number; name: string }[]) => {
-    if (products.length === 0) return;
-    const map = new Map(products.map((p) => [p.id, p.name]));
-    setEntries((prev) => {
-      let changed = false;
-      const next = prev.map((e) => {
-        const name = map.get(e.productId);
-        if (name && name !== e.productName) {
-          changed = true;
-          return { ...e, productName: name };
-        }
-        return e;
-      });
-      if (changed) {
+  const removeEntry = useCallback(
+    (target: OrderListEntryTarget) => {
+      setEntries((prev) => {
+        const next = prev.filter((e) => !matchesEntryTarget(e, target));
         persistLocally(next);
         persistRemotely(next);
         return next;
-      }
-      return prev;
-    });
-  }, [persistLocally, persistRemotely]);
+      });
+    },
+    [persistLocally, persistRemotely]
+  );
+
+  const setEntryChecked = useCallback(
+    (target: OrderListEntryTarget, checked: boolean) => {
+      setEntries((prev) => {
+        const next = prev.map((e) =>
+          matchesEntryTarget(e, target) ? { ...e, checked } : e
+        );
+        persistLocally(next);
+        persistRemotely(next);
+        return next;
+      });
+    },
+    [persistLocally, persistRemotely]
+  );
+
+  const syncProductNames = useCallback(
+    (products: { id: number; name: string; groupSyncId: string }[]) => {
+      if (products.length === 0) return;
+      setEntries((prev) => {
+        let changed = false;
+        const next = prev.map((e) => {
+          const p = products.find((x) => {
+            if ((e.productGroupSyncId ?? "").trim() !== "") {
+              return x.groupSyncId === (e.productGroupSyncId ?? "").trim();
+            }
+            return x.id === e.productId;
+          });
+          if (p && p.name !== e.productName) {
+            changed = true;
+            return {
+              ...e,
+              productId: p.id,
+              productGroupSyncId: p.groupSyncId,
+              productName: p.name,
+            };
+          }
+          return e;
+        });
+        if (changed) {
+          persistLocally(next);
+          persistRemotely(next);
+          return next;
+        }
+        return prev;
+      });
+    },
+    [persistLocally, persistRemotely]
+  );
 
   const value = useMemo(
     () => ({

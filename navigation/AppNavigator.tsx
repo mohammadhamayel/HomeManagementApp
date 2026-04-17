@@ -18,6 +18,7 @@ import {
   useInventoryNotifications,
 } from "../context/NotificationContext";
 import { OrderListProvider } from "../context/OrderListContext";
+import { InventorySyncProvider } from "../context/InventorySyncContext";
 import LoginScreen from "../screens/LoginScreen";
 import LastProductScreen from "../screens/LastProductScreen";
 import AllProductsScreen from "../screens/AllProductsScreen";
@@ -186,7 +187,9 @@ export default function AppNavigator() {
       {user ? (
         <NotificationProvider>
           <OrderListProvider>
-            <MainDrawer />
+            <InventorySyncProvider>
+              <MainDrawer />
+            </InventorySyncProvider>
           </OrderListProvider>
         </NotificationProvider>
       ) : (

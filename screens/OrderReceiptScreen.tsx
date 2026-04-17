@@ -28,7 +28,13 @@ export default function OrderReceiptScreen() {
   const refreshNames = useCallback(() => {
     void (async () => {
       const products = await getAllProducts();
-      syncProductNames(products.map((p) => ({ id: p.id, name: p.name })));
+      syncProductNames(
+        products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          groupSyncId: p.groupSyncId,
+        }))
+      );
     })();
   }, [syncProductNames]);
 
@@ -55,14 +61,24 @@ export default function OrderReceiptScreen() {
       ) : (
         <FlatList
           data={sorted}
-          keyExtractor={(item) => String(item.productId)}
+          keyExtractor={(item) =>
+            item.productGroupSyncId?.trim()
+              ? item.productGroupSyncId
+              : `id:${item.productId}`
+          }
           contentContainerStyle={styles.listPad}
           renderItem={({ item }) => (
             <View style={styles.card}>
               <TouchableOpacity
                 style={styles.checkHit}
                 onPress={() =>
-                  setEntryChecked(item.productId, !item.checked)
+                  setEntryChecked(
+                    {
+                      productId: item.productId,
+                      productGroupSyncId: item.productGroupSyncId,
+                    },
+                    !item.checked
+                  )
                 }
                 accessibilityLabel={
                   item.checked ? "إلغاء التحديد" : "تحديد"
@@ -102,7 +118,12 @@ export default function OrderReceiptScreen() {
 
               <TouchableOpacity
                 style={styles.removeBtn}
-                onPress={() => removeEntry(item.productId)}
+                onPress={() =>
+                  removeEntry({
+                    productId: item.productId,
+                    productGroupSyncId: item.productGroupSyncId,
+                  })
+                }
                 accessibilityLabel="إزالة من الطلبية"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >

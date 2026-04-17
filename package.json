@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start --localhost",
+    "start": "expo start --lan",
+    "start:localhost": "expo start --localhost",
     "start:lan": "expo start --lan",
-    "android": "expo start --android --localhost",
-    "ios": "expo start --ios --localhost",
+    "android": "expo start --android --lan",
+    "ios": "expo start --ios --lan",
+    "ios:device": "expo run:ios --device \"iPhone\"",
+    "ios:device:release": "expo run:ios --device \"iPhone\" --configuration Release --no-bundler",
     "web": "expo start --web",
     "postinstall": "patch-package",
     "expo:login": "expo login"

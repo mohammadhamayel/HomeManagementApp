@@ -68,7 +68,7 @@ export function buildDailyInventoryNotifications(
       const daysLeft = calendarDaysUntilExpiry(new Date(p.expiryDate), now);
       if (daysLeft <= expiryDays) {
         out.push({
-          id: `daily-${dayKey}-expiry-${p.id}`,
+          id: `daily-${dayKey}-expiry-${p.groupSyncId}`,
           title: EXPIRY_ALERT_TITLE,
           description: expiryDescription(p.name, daysLeft),
           dayKey,
@@ -80,8 +80,8 @@ export function buildDailyInventoryNotifications(
     }
 
     if (lowQty > 0 && p.quantity <= lowQty) {
-      out.push({
-        id: `daily-${dayKey}-qty-${p.id}`,
+        out.push({
+          id: `daily-${dayKey}-qty-${p.groupSyncId}`,
         title: LOW_QTY_ALERT_TITLE,
         description: qtyDescription(p.name, p.quantity),
         dayKey,

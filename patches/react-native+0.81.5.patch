@@ -1,0 +1,17 @@
+diff --git a/node_modules/react-native/scripts/react-native-xcode.sh b/node_modules/react-native/scripts/react-native-xcode.sh
+index 1dcdf55..73cd644 100755
+--- a/node_modules/react-native/scripts/react-native-xcode.sh
++++ b/node_modules/react-native/scripts/react-native-xcode.sh
+@@ -46,6 +46,12 @@ case "$CONFIGURATION" in
+     fi
+ 
+     DEV=true
++    # HomeManagementApp: optional production embed for Debug+device (set in ios/.xcode.env.updates).
++    # Avoids Metro on LAN and DevTools "embedded environments" errors when loading file:// bundle.
++    if [[ -n "$RN_EMBED_PRODUCTION_FOR_DEVICE" && "$PLATFORM_NAME" != *simulator* ]]; then
++      echo "RN_EMBED_PRODUCTION_FOR_DEVICE: embedding production bundle for physical device (no Metro)."
++      DEV=false
++    fi
+     ;;
+   "")
+     echo "$0 must be invoked by Xcode"

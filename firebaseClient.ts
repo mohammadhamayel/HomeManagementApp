@@ -41,6 +41,11 @@ const firebaseConfig = {
  *
  * Each device gets its own Anonymous UID (e.g. gSaU8… on one phone). You do not put that
  * UID in the rule unless you only want that one device to access the list.
+ *
+ * Shared household login (Email/Password in Firebase Auth). Create this user in the console
+ * with the same email and password. Firestore rules should allow the same paths for this uid:
+ *   match /order_lists/{userId}
+ *   match /inventory_snapshots/{userId}
  */
 export const FIREBASE_SHARED_EMAIL = "m.hamayel@gmail.com";
 export const FIREBASE_SHARED_PASSWORD = "123123";
@@ -79,7 +84,8 @@ export const firestore = getFirestore(getFirebaseApp());
 
 export function getOrderListDocumentId(user: User): string {
   const email = FIREBASE_SHARED_EMAIL.trim();
-  if (email !== "" && FIREBASE_SHARED_PASSWORD !== "") {
+  const password = String(FIREBASE_SHARED_PASSWORD).trim();
+  if (email !== "" && password !== "") {
     return user.uid;
   }
   return ORDER_LIST_SHARED_DOC_ID;
@@ -90,11 +96,12 @@ export async function ensureOrderListAuth(): Promise<User> {
   if (auth.currentUser) return auth.currentUser;
 
   const email = FIREBASE_SHARED_EMAIL.trim();
-  if (email !== "" && FIREBASE_SHARED_PASSWORD !== "") {
+  const password = String(FIREBASE_SHARED_PASSWORD).trim();
+  if (email !== "" && password !== "") {
     const cred = await signInWithEmailAndPassword(
       auth,
       email,
-      FIREBASE_SHARED_PASSWORD
+      password
     );
     return cred.user;
   }
