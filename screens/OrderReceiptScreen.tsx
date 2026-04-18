@@ -11,9 +11,11 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import { getAllProducts } from "../database";
 import { useOrderList, type OrderListEntry } from "../context/OrderListContext";
+import { useInventorySync } from "../context/InventorySyncContext";
 import { rtlLabel } from "../theme/rtlStyles";
 
 export default function OrderReceiptScreen() {
+  const { inventoryRevision } = useInventorySync();
   const {
     entries,
     removeEntry,
@@ -41,7 +43,7 @@ export default function OrderReceiptScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshNames();
-    }, [refreshNames])
+    }, [refreshNames, inventoryRevision])
   );
 
   const sorted = useMemo(

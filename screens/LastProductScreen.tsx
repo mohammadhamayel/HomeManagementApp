@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -23,10 +23,15 @@ import {
   type ProductGroupPickerItem,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
+import { useInventorySync } from "../context/InventorySyncContext";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
+
+/** Last-product preview card on this screen only; hides automatically after this duration. */
+const LAST_PRODUCT_CARD_VISIBLE_MS = 5 * 60 * 1000;
 
 export default function LastProductScreen() {
   const { refreshNotifications } = useInventoryNotifications();
+  const { inventoryRevision } = useInventorySync();
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [expiryAlertDays, setExpiryAlertDays] = useState("");
@@ -36,8 +41,37 @@ export default function LastProductScreen() {
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [lastSnapshot, setLastSnapshot] = useState<Product | null>(null);
+  const [showLastProductCard, setShowLastProductCard] = useState(false);
+  const lastProductCardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [pickerItems, setPickerItems] = useState<ProductGroupPickerItem[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  /** Bumps on screen focus so the preview card gets a fresh 5‑minute window each visit. */
+  const [lastProductCardSession, setLastProductCardSession] = useState(0);
+
+  const lastSnapshotKey = useMemo(
+    () =>
+      lastSnapshot
+        ? [
+            lastSnapshot.id,
+            lastSnapshot.primaryLineId,
+            lastSnapshot.groupSyncId,
+            lastSnapshot.quantity,
+            lastSnapshot.name,
+            lastSnapshot.expiryDate,
+            lastSnapshot.purchaseDate,
+          ].join("|")
+        : "",
+    [lastSnapshot]
+  );
+
+  const clearLastProductCardTimer = useCallback(() => {
+    if (lastProductCardTimerRef.current) {
+      clearTimeout(lastProductCardTimerRef.current);
+      lastProductCardTimerRef.current = null;
+    }
+  }, []);
 
   const loadPicker = useCallback(() => {
     void (async () => {
@@ -97,6 +131,7 @@ export default function LastProductScreen() {
         const last = await getLastProduct();
         if (cancelled) return;
         setLastSnapshot(last);
+        setLastProductCardSession((n) => n + 1);
         resetFormForNew();
         void refreshNotifications();
       })();
@@ -105,6 +140,37 @@ export default function LastProductScreen() {
       };
     }, [loadPicker, resetFormForNew, refreshNotifications])
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const last = await getLastProduct();
+      if (cancelled) return;
+      setLastSnapshot(last);
+      loadPicker();
+      void refreshNotifications();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inventoryRevision, loadPicker, refreshNotifications]);
+
+  useEffect(() => {
+    if (!lastSnapshotKey) {
+      clearLastProductCardTimer();
+      setShowLastProductCard(false);
+      return;
+    }
+    setShowLastProductCard(true);
+    clearLastProductCardTimer();
+    lastProductCardTimerRef.current = setTimeout(() => {
+      lastProductCardTimerRef.current = null;
+      setShowLastProductCard(false);
+    }, LAST_PRODUCT_CARD_VISIBLE_MS);
+    return () => {
+      clearLastProductCardTimer();
+    };
+  }, [lastSnapshotKey, lastProductCardSession, clearLastProductCardTimer]);
 
   const save = async () => {
     const qty = parseQuantityInput(quantity);
@@ -298,7 +364,7 @@ export default function LastProductScreen() {
         </Text>
       </TouchableOpacity>
 
-      {lastSnapshot ? (
+      {lastSnapshot && showLastProductCard ? (
         <View style={styles.card}>
           <View style={styles.cardTop}>
             <View style={styles.cardActions}>
