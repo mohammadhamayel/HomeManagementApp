@@ -34,6 +34,8 @@ export type OrderListEntry = {
   quantity: number;
   notes: string;
   checked: boolean;
+  /** ISO date `YYYY-MM-DD` — expiry when marked as received (checked). */
+  expiresAt: string | null;
 };
 
 /** Product identity for starring / order list rows (ties to SQLite after sync). */
@@ -61,6 +63,13 @@ type OrderListContextValue = {
   }) => void;
   removeEntry: (target: OrderListEntryTarget) => void;
   setEntryChecked: (target: OrderListEntryTarget, checked: boolean) => void;
+  /** When checking, pass ISO `YYYY-MM-DD`; when unchecking, `expiresAt` is ignored and cleared. */
+  setCheckedWithExpiry: (
+    target: OrderListEntryTarget,
+    checked: boolean,
+    expiresAtISO: string | null
+  ) => void;
+  updateEntryQuantity: (target: OrderListEntryTarget, quantity: number) => void;
   syncProductNames: (
     products: { id: number; name: string; groupSyncId: string }[]
   ) => void;
@@ -100,6 +109,12 @@ function normalizeEntries(raw: unknown): OrderListEntry[] {
           ? syncRaw.trim()
           : undefined;
 
+      const expiresRaw = o.expiresAt;
+      let resolvedExpires: string | null = null;
+      if (typeof expiresRaw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(expiresRaw.trim())) {
+        resolvedExpires = expiresRaw.trim();
+      }
+
       const productId = Number(o.productId);
       if (productGroupSyncId) {
         const pid =
@@ -111,7 +126,8 @@ function normalizeEntries(raw: unknown): OrderListEntry[] {
           quantity: Math.max(0, Math.trunc(quantity)),
           notes: String(o.notes ?? ""),
           checked: Boolean(o.checked),
-        } satisfies OrderListEntry;
+          expiresAt: resolvedExpires,
+        };
       }
 
       if (!Number.isFinite(productId) || productId <= 0) return null;
@@ -121,7 +137,8 @@ function normalizeEntries(raw: unknown): OrderListEntry[] {
         quantity: Math.max(0, Math.trunc(quantity)),
         notes: String(o.notes ?? ""),
         checked: Boolean(o.checked),
-      } satisfies OrderListEntry;
+        expiresAt: resolvedExpires,
+      };
     })
     .filter((x): x is OrderListEntry => x !== null);
 }
@@ -278,6 +295,7 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
               quantity: qty,
               notes: input.notes.trim(),
               checked: false,
+              expiresAt: null,
             },
           ];
         } else {
@@ -316,7 +334,46 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
     (target: OrderListEntryTarget, checked: boolean) => {
       setEntries((prev) => {
         const next = prev.map((e) =>
-          matchesEntryTarget(e, target) ? { ...e, checked } : e
+          matchesEntryTarget(e, target)
+            ? { ...e, checked, ...(checked ? {} : { expiresAt: null }) }
+            : e
+        );
+        persistLocally(next);
+        persistRemotely(next);
+        return next;
+      });
+    },
+    [persistLocally, persistRemotely]
+  );
+
+  const setCheckedWithExpiry = useCallback(
+    (target: OrderListEntryTarget, checked: boolean, expiresAtISO: string | null) => {
+      setEntries((prev) => {
+        const next = prev.map((e) => {
+          if (!matchesEntryTarget(e, target)) return e;
+          if (!checked) {
+            return { ...e, checked: false, expiresAt: null };
+          }
+          const exp =
+            expiresAtISO && /^\d{4}-\d{2}-\d{2}$/.test(expiresAtISO)
+              ? expiresAtISO
+              : null;
+          return { ...e, checked: true, expiresAt: exp };
+        });
+        persistLocally(next);
+        persistRemotely(next);
+        return next;
+      });
+    },
+    [persistLocally, persistRemotely]
+  );
+
+  const updateEntryQuantity = useCallback(
+    (target: OrderListEntryTarget, quantity: number) => {
+      const qty = Math.max(1, Math.trunc(quantity));
+      setEntries((prev) => {
+        const next = prev.map((e) =>
+          matchesEntryTarget(e, target) ? { ...e, quantity: qty } : e
         );
         persistLocally(next);
         persistRemotely(next);
@@ -369,6 +426,8 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
       upsertEntry,
       removeEntry,
       setEntryChecked,
+      setCheckedWithExpiry,
+      updateEntryQuantity,
       syncProductNames,
     }),
     [
@@ -379,6 +438,8 @@ export function OrderListProvider({ children }: { children: React.ReactNode }) {
       upsertEntry,
       removeEntry,
       setEntryChecked,
+      setCheckedWithExpiry,
+      updateEntryQuantity,
       syncProductNames,
     ]
   );
