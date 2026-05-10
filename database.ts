@@ -99,6 +99,16 @@ export function parseQuantityInput(text: string): number | null {
   return n;
 }
 
+function pickRowString(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) {
+      const v = row[key];
+      if (v != null) return String(v);
+    }
+  }
+  return "";
+}
+
 function normalizeLineRow(row: Record<string, unknown>): ProductLineRecord {
   const q = row.quantity;
   let quantity = 0;
@@ -138,8 +148,13 @@ function normalizeLineRow(row: Record<string, unknown>): ProductLineRecord {
     groupId: Number(row.group_id ?? row.groupId),
     lineSyncId,
     quantity,
-    purchaseDate: String(row.purchaseDate ?? ""),
-    expiryDate: String(row.expiryDate ?? ""),
+    purchaseDate: pickRowString(
+      row,
+      "purchaseDate",
+      "purchase_date",
+      "PurchaseDate"
+    ),
+    expiryDate: pickRowString(row, "expiryDate", "expiry_date", "ExpiryDate"),
     category: String(row.category ?? ""),
     notes: String(row.notes ?? ""),
     expiryAlertDays,

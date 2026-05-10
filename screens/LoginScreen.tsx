@@ -41,7 +41,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.card}>
-        <Text style={[styles.title, rtlLabel]}>تنظيم المنزل</Text>
+        <Text style={[styles.title, rtlLabel]}>Beiti</Text>
         <Text style={[styles.sub, rtlLabel]}>تسجيل الدخول</Text>
 
         <TextInput

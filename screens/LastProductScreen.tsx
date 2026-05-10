@@ -23,6 +23,10 @@ import {
   type ProductGroupPickerItem,
 } from "../database";
 import { useInventoryNotifications } from "../context/NotificationContext";
+import {
+  formatInventoryDateForDisplay,
+  parseInventoryDateString,
+} from "../utils/inventoryDates";
 import { useInventorySync } from "../context/InventorySyncContext";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
 
@@ -88,7 +92,7 @@ export default function LastProductScreen() {
     setLowQtyThreshold(p.lowQtyThreshold > 0 ? String(p.lowQtyThreshold) : "");
     setNotes(p.notes);
     setCategory(p.category || "food");
-    setExpiryDate(new Date(p.expiryDate));
+    setExpiryDate(parseInventoryDateString(p.expiryDate) ?? new Date());
     setEditingProduct(p);
     setSelectedGroupId(null);
   }, []);
@@ -389,11 +393,11 @@ export default function LastProductScreen() {
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
                 تاريخ الإضافة (الدفعة الظاهرة):{" "}
-                {new Date(lastSnapshot.purchaseDate).toLocaleDateString("ar")}
+                {formatInventoryDateForDisplay(lastSnapshot.purchaseDate)}
               </Text>
               <Text style={[styles.cardMeta, rtlLabel]}>
                 انتهاء (الدفعة الظاهرة):{" "}
-                {new Date(lastSnapshot.expiryDate).toLocaleDateString("ar")}
+                {formatInventoryDateForDisplay(lastSnapshot.expiryDate)}
               </Text>
               {lastSnapshot.expiryAlertDays > 0 ? (
                 <Text style={[styles.cardMeta, rtlLabel]}>

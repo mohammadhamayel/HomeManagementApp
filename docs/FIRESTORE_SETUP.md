@@ -15,7 +15,7 @@ This guide walks you through **creating a Firebase account**, **a project**, **A
 ## Part 2 — Create a Firebase project
 
 1. Click **Add project** (or **Create a project**).
-2. **Project name**: e.g. `HomeManagementApp` (any name you like).
+2. **Project name**: e.g. `Beiti` (any name you like).
 3. **Google Analytics**: optional. For minimal setup you can **disable** Analytics to reduce noise; you can enable it later.
 4. Click **Create project** and wait until it finishes, then **Continue**.
 
@@ -28,7 +28,7 @@ You should see the project **overview** (dashboard) for that project.
 You need a registered app to obtain API keys and `appId` for the Expo/React Native Firebase SDK.
 
 1. On the project overview, click the **Web** icon **`</>`** (“Add app” → Web), unless you are only using native Firebase plugins—in Expo, the **JavaScript SDK** (`firebase` npm package) is common; registering a **Web** app is still the right way to get `apiKey`, `projectId`, etc.
-2. **App nickname**: e.g. `HomeManagement Web`.
+2. **App nickname**: e.g. `Beiti Web`.
 3. You can skip **Firebase Hosting** for now.
 4. Click **Register app**. Firebase shows a **firebaseConfig** object (JavaScript). **Copy it** and keep it private (treat `apiKey` as non-secret for client apps, but do not publish it in public repos without rules in place).
 

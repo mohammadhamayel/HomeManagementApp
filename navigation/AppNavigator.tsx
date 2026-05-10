@@ -101,7 +101,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       contentContainerStyle={styles.drawerScroll}
     >
       <View style={styles.drawerHeader}>
-        <Text style={styles.drawerAppName}>تنظيم المنزل</Text>
+        <Text style={styles.drawerAppName}>Beiti</Text>
         <Text style={styles.drawerUser}>👤 {user?.username}</Text>
       </View>
 
@@ -139,7 +139,7 @@ function MainDrawer() {
       screenOptions={({ navigation }) => ({
         headerShown: true,
         drawerPosition: "right",
-        headerTitle: "تنظيم المنزل",
+        headerTitle: "Beiti",
         headerTitleAlign: "center",
         headerStyle: { backgroundColor: "#1a365d" },
         headerTintColor: "#fff",

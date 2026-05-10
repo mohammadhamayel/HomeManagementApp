@@ -6,7 +6,7 @@ index 1dcdf55..73cd644 100755
      fi
  
      DEV=true
-+    # HomeManagementApp: optional production embed for Debug+device (set in ios/.xcode.env.updates).
++    # Beiti: optional production embed for Debug+device (set in ios/.xcode.env.updates).
 +    # Avoids Metro on LAN and DevTools "embedded environments" errors when loading file:// bundle.
 +    if [[ -n "$RN_EMBED_PRODUCTION_FOR_DEVICE" && "$PLATFORM_NAME" != *simulator* ]]; then
 +      echo "RN_EMBED_PRODUCTION_FOR_DEVICE: embedding production bundle for physical device (no Metro)."

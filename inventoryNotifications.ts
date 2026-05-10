@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Product } from "./database";
+import { parseInventoryDateString } from "./utils/inventoryDates";
 
 const STORAGE_KEY = "@home_mgmt_inventory_notifications_v1";
 
@@ -65,7 +66,9 @@ export function buildDailyInventoryNotifications(
     const lowQty = p.lowQtyThreshold ?? 0;
 
     if (expiryDays > 0) {
-      const daysLeft = calendarDaysUntilExpiry(new Date(p.expiryDate), now);
+      const expiryDt = parseInventoryDateString(p.expiryDate);
+      if (!expiryDt) continue;
+      const daysLeft = calendarDaysUntilExpiry(expiryDt, now);
       if (daysLeft <= expiryDays) {
         out.push({
           id: `daily-${dayKey}-expiry-${p.groupSyncId}`,

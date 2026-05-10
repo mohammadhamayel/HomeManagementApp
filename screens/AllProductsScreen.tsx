@@ -28,6 +28,10 @@ import { useInventorySync } from "../context/InventorySyncContext";
 import { useOrderList } from "../context/OrderListContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 import { sanitizeUnsignedIntegerInput } from "../utils/digitLocale";
+import {
+  formatInventoryDateForDisplay,
+  parseInventoryDateString,
+} from "../utils/inventoryDates";
 
 export default function AllProductsScreen() {
   const { refreshNotifications } = useInventoryNotifications();
@@ -193,17 +197,25 @@ export default function AllProductsScreen() {
     const nameQ = nameFilter.trim().toLowerCase();
     const categoryQ = categoryFilter.trim().toLowerCase();
     const now = new Date();
+    const startToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
 
     return products.filter((item) => {
       if (nameQ && !item.name.toLowerCase().includes(nameQ)) return false;
       if (categoryQ && !item.category.toLowerCase().includes(categoryQ)) {
         return false;
       }
-      if (expiryFilter === "expired" && new Date(item.expiryDate) >= now) {
-        return false;
+      const exp = parseInventoryDateString(item.expiryDate);
+      if (expiryFilter === "expired") {
+        if (!exp) return false;
+        if (exp >= startToday) return false;
       }
-      if (expiryFilter === "valid" && new Date(item.expiryDate) < now) {
-        return false;
+      if (expiryFilter === "valid") {
+        if (!exp) return false;
+        if (exp < startToday) return false;
       }
       return true;
     });
@@ -339,11 +351,11 @@ export default function AllProductsScreen() {
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
                   تاريخ الإضافة (الدفعة الظاهرة):{" "}
-                  {new Date(item.purchaseDate).toLocaleDateString("ar")}
+                  {formatInventoryDateForDisplay(item.purchaseDate)}
                 </Text>
                 <Text style={[styles.meta, rtlLabel]}>
                   انتهاء (الدفعة الظاهرة):{" "}
-                  {new Date(item.expiryDate).toLocaleDateString("ar")}
+                  {formatInventoryDateForDisplay(item.expiryDate)}
                 </Text>
                 {item.expiryAlertDays > 0 ? (
                   <Text style={[styles.meta, rtlLabel]}>
@@ -422,10 +434,10 @@ export default function AllProductsScreen() {
                     </View>
                     <Text style={[styles.historyMeta, rtlLabel]}>
                       تاريخ الإضافة:{" "}
-                      {new Date(line.purchaseDate).toLocaleDateString("ar")}
+                      {formatInventoryDateForDisplay(line.purchaseDate)}
                     </Text>
                     <Text style={[styles.historyMeta, rtlLabel]}>
-                      انتهاء: {new Date(line.expiryDate).toLocaleDateString("ar")}
+                      انتهاء: {formatInventoryDateForDisplay(line.expiryDate)}
                     </Text>
                     <Text style={[styles.historyMeta, rtlLabel]}>
                       التصنيف: {line.category}

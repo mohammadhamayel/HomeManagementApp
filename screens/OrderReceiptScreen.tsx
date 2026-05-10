@@ -10,12 +10,15 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   getAllProducts,
+  insertProduct,
   parseQuantityInput,
   type Product,
 } from "../database";
@@ -27,6 +30,7 @@ import {
 import { useInventorySync } from "../context/InventorySyncContext";
 import { rtlInput, rtlLabel } from "../theme/rtlStyles";
 import { formatDateForDisplay } from "../components/DateInputField";
+import { ymdDayToIsoStorage } from "../utils/inventoryDates";
 
 function toISODateString(d: Date): string {
   const y = d.getFullYear();
@@ -48,6 +52,25 @@ function entryTarget(item: OrderListEntry): OrderListEntryTarget {
     productId: item.productId,
     productGroupSyncId: item.productGroupSyncId,
   };
+}
+
+function findProductForOrderEntry(
+  entry: OrderListEntry,
+  products: Product[]
+): Product | undefined {
+  const sid = (entry.productGroupSyncId ?? "").trim();
+  if (sid !== "") {
+    return products.find((p) => p.groupSyncId.trim() === sid);
+  }
+  if (entry.productId > 0) {
+    return products.find((p) => p.id === entry.productId);
+  }
+  return undefined;
+}
+
+function normalizeExpiryForLine(iso: string | null): string {
+  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso.trim())) return iso.trim();
+  return "";
 }
 
 export default function OrderReceiptScreen() {
@@ -81,9 +104,12 @@ export default function OrderReceiptScreen() {
   );
   const [expiryDraftDate, setExpiryDraftDate] = useState<Date>(() => new Date());
   const [androidExpiryPicker, setAndroidExpiryPicker] = useState(false);
+  /** Android: user must open the date picker at least once before confirming. iOS spinner counts as chosen when modal opens. */
+  const [expiryChosenFromPicker, setExpiryChosenFromPicker] = useState(false);
 
   const [qtyEditEntry, setQtyEditEntry] = useState<OrderListEntry | null>(null);
   const [qtyEditDraft, setQtyEditDraft] = useState("");
+  const [syncingToInventory, setSyncingToInventory] = useState(false);
 
   const refreshNames = useCallback(() => {
     void (async () => {
@@ -172,6 +198,7 @@ export default function OrderReceiptScreen() {
     }
     setExpiryDraftDate(dateFromISO(item.expiresAt));
     setExpiryModalEntry(item);
+    setExpiryChosenFromPicker(Platform.OS === "ios");
     if (Platform.OS === "android") {
       setAndroidExpiryPicker(false);
     }
@@ -179,6 +206,13 @@ export default function OrderReceiptScreen() {
 
   const confirmExpiryAndCheck = () => {
     if (!expiryModalEntry) return;
+    if (Platform.OS === "android" && !expiryChosenFromPicker) {
+      Alert.alert(
+        "تنبيه",
+        "افتح التقويم 📅 واختر تاريخ انتهاء الصلاحية قبل التأكيد."
+      );
+      return;
+    }
     setCheckedWithExpiry(
       entryTarget(expiryModalEntry),
       true,
@@ -195,7 +229,10 @@ export default function OrderReceiptScreen() {
       setAndroidExpiryPicker(false);
       if (event.type === "dismissed") return;
     }
-    if (date) setExpiryDraftDate(date);
+    if (date) {
+      setExpiryDraftDate(date);
+      setExpiryChosenFromPicker(true);
+    }
   };
 
   const bumpLineQty = (item: OrderListEntry, delta: number) => {
@@ -216,6 +253,95 @@ export default function OrderReceiptScreen() {
     setQtyEditEntry(null);
     setQtyEditDraft("");
   };
+
+  const hasCheckedToSync = useMemo(
+    () =>
+      entries.some(
+        (e) =>
+          e.checked &&
+          e.quantity > 0 &&
+          normalizeExpiryForLine(e.expiresAt) !== ""
+      ),
+    [entries]
+  );
+
+  const syncCheckedToInventory = useCallback(() => {
+    const checked = entries.filter((e) => e.checked && e.quantity > 0);
+    if (checked.length === 0) {
+      Alert.alert(
+        "",
+        "لا توجد عناصر محددة بكمية أكبر من صفر. حدّد العناصر المستلمة من المربع."
+      );
+      return;
+    }
+    const missingExpiry = checked.filter(
+      (e) => normalizeExpiryForLine(e.expiresAt) === ""
+    );
+    if (missingExpiry.length > 0) {
+      Alert.alert(
+        "تاريخ الانتهاء مطلوب",
+        `حدّد تاريخ انتهاء الصلاحية من التقويم لكل منتج محدد قبل المزامنة:\n${missingExpiry.map((e) => e.productName.trim() || "؟").join("، ")}`
+      );
+      return;
+    }
+    void (async () => {
+      setSyncingToInventory(true);
+      try {
+        const products = await getAllProducts();
+        let ok = 0;
+        const missing: string[] = [];
+        const today = new Date();
+        const purchaseDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate()
+        ).toISOString();
+        for (const entry of checked) {
+          const p = findProductForOrderEntry(entry, products);
+          if (!p) {
+            missing.push(entry.productName.trim() || "؟");
+            continue;
+          }
+          const expiry = ymdDayToIsoStorage(
+            normalizeExpiryForLine(entry.expiresAt)
+          );
+          const lineNotes = entry.notes.trim() || p.notes;
+          await insertProduct(
+            p.name,
+            entry.quantity,
+            purchaseDate,
+            expiry,
+            p.category,
+            lineNotes,
+            p.expiryAlertDays,
+            p.lowQtyThreshold,
+            { existingGroupId: p.id }
+          );
+          ok += 1;
+          removeEntry(entryTarget(entry));
+        }
+        if (missing.length > 0) {
+          Alert.alert(
+            ok > 0 ? "اكتمل جزئيًا" : "فشلت المزامنة",
+            ok > 0
+              ? `أُضيفت ${ok} دفعة إلى «جميع المنتجات».\nلم يُعثر في المخزون على: ${missing.join("، ")}`
+              : `لم يُعثر في المخزون على منتج مطابق: ${missing.join("، ")}`
+          );
+        } else {
+          Alert.alert(
+            "",
+            ok === 1
+              ? "تُمّت إضافة دفعة واحدة إلى المخزون وأُزيلت من الطلبية."
+              : `تُمّت إضافة ${ok} دفعات إلى المخزون وأُزيلت من الطلبية.`
+          );
+        }
+      } catch (e) {
+        Alert.alert("خطأ", e instanceof Error ? e.message : String(e));
+      } finally {
+        setSyncingToInventory(false);
+      }
+    })();
+  }, [entries, removeEntry]);
 
   const fabBottom = Math.max(insets.bottom, 12) + 8;
   const listBottomPad = fabBottom + 56 + 12;
@@ -334,6 +460,26 @@ export default function OrderReceiptScreen() {
           )}
         />
       )}
+
+      {!loading && sorted.length > 0 ? (
+        <TouchableOpacity
+          style={[
+            styles.syncFab,
+            { bottom: fabBottom },
+            (!hasCheckedToSync || syncingToInventory) && styles.syncFabDisabled,
+          ]}
+          onPress={syncCheckedToInventory}
+          disabled={!hasCheckedToSync || syncingToInventory}
+          activeOpacity={0.85}
+          accessibilityLabel="مزامنة المحدد مع المخزون"
+        >
+          {syncingToInventory ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.syncFabText}>↻</Text>
+          )}
+        </TouchableOpacity>
+      ) : null}
 
       {!loading ? (
         <TouchableOpacity
@@ -666,6 +812,31 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28,
     shadowRadius: 8,
+  },
+  syncFab: {
+    position: "absolute",
+    left: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#059669",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+  },
+  syncFabDisabled: {
+    backgroundColor: "#94a3b8",
+    opacity: 0.85,
+  },
+  syncFabText: {
+    fontSize: 28,
+    color: "#fff",
+    fontWeight: "700",
+    marginTop: -2,
   },
   fabIcon: {
     fontSize: 32,
